@@ -1,3 +1,3 @@
 # Discord ATK討伐戦Bot 
-[メインページ](starveris.com/toubatsusen)
-[github.io](ramistarveris.github.io/toubatsusen)
+[メインページ](https://starveris.com/toubatsusen)
+[github.io](https://ramistarveris.github.io/toubatsusen)
