@@ -1,0 +1,378 @@
+:root {
+    color-scheme: light;
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --surface-subtle: #fafaf8;
+    --surface-muted: #f0f0ec;
+    --ink: #161616;
+    --muted: #6b6b6b;
+    --line: #e1e1db;
+    --line-strong: #cfcfc8;
+    --accent: #111111;
+    --checker-a: #f6f6f2;
+    --checker-b: #ecece6;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+}
+
+body {
+    font-family: "Aptos", "Yu Gothic UI", "Meiryo", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+}
+
+button,
+select,
+input {
+    font: inherit;
+}
+
+button:focus-visible,
+select:focus-visible,
+.drop-zone:focus-within {
+    outline: 2px solid #555;
+    outline-offset: 2px;
+}
+
+.page-shell {
+    width: min(1080px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 28px 0 40px;
+}
+
+.hero {
+    margin-bottom: 20px;
+}
+
+.eyebrow,
+.panel-label,
+.drop-kicker {
+    margin: 0;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 0.74rem;
+    color: var(--accent);
+}
+
+.hero h1 {
+    margin: 8px 0;
+    font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    line-height: 1.08;
+    font-weight: 700;
+}
+
+.lead,
+.privacy-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 16px;
+}
+
+.drop-panel,
+.gallery-panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+}
+
+.drop-zone {
+    display: grid;
+    place-items: center;
+    gap: 10px;
+    min-height: 200px;
+    padding: 20px;
+    text-align: center;
+    border-radius: 12px;
+    border: 1px dashed var(--line-strong);
+    background: var(--surface-subtle);
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.drop-zone strong {
+    font-size: 1.1rem;
+    line-height: 1.4;
+}
+
+.drop-zone span:last-child {
+    color: var(--muted);
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
+.drop-zone.is-active {
+    border-color: var(--accent);
+    background: #f1f1ee;
+}
+
+.toolbar {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.toolbar-group,
+.toolbar-actions,
+.field,
+.summary-row,
+.card-actions,
+.card-top {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.toolbar-group,
+.toolbar-actions {
+    flex-wrap: wrap;
+}
+
+.toolbar label,
+.field span {
+    font-size: 0.92rem;
+    color: var(--muted);
+}
+
+select,
+button {
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+}
+
+select {
+    min-width: 168px;
+}
+
+button {
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+button:hover:not(:disabled),
+select:hover {
+    border-color: var(--accent);
+}
+
+button:disabled,
+select:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.primary-button,
+#apply-batch {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.primary-button:hover:not(:disabled),
+#apply-batch:hover:not(:disabled) {
+    background: #000000;
+    border-color: #000000;
+}
+
+.ghost-button {
+    background: var(--surface);
+}
+
+.privacy-note {
+    margin-top: 14px;
+    font-size: 0.78rem;
+}
+
+.status-text,
+.panel-note,
+.card-info,
+.summary-label {
+    color: var(--muted);
+}
+
+.status-text {
+    margin: 8px 0 0;
+    min-height: 1.5em;
+    line-height: 1.5;
+    font-size: 0.9rem;
+}
+
+.panel-header {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: end;
+    margin-bottom: 14px;
+}
+
+.panel-header h2 {
+    margin: 4px 0 0;
+    font-size: 1.4rem;
+    line-height: 1.2;
+}
+
+.panel-note {
+    max-width: 28ch;
+    margin: 0;
+    text-align: right;
+    line-height: 1.5;
+    font-size: 0.86rem;
+}
+
+.empty-state {
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px dashed var(--line);
+    background: var(--surface-subtle);
+}
+
+.gallery {
+    display: grid;
+    gap: 12px;
+}
+
+.image-card {
+    padding: 16px;
+    border-radius: 12px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--line);
+}
+
+.card-top {
+    justify-content: space-between;
+    align-items: start;
+}
+
+.card-name {
+    margin: 0;
+    font-weight: 700;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.card-info {
+    margin: 4px 0 0;
+    font-size: 0.92rem;
+}
+
+.field {
+    margin: 14px 0 12px;
+    justify-content: space-between;
+}
+
+.field .scale-select {
+    flex: 1;
+}
+
+.summary-row {
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+}
+
+.summary-row div {
+    display: grid;
+    gap: 4px;
+}
+
+.preview-frame {
+    margin-top: 14px;
+    display: grid;
+    place-items: center;
+    min-height: 200px;
+    padding: 14px;
+    overflow: auto;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background:
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+
+.preview-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 480px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+.card-actions {
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+@media (max-width: 920px) {
+    .workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .panel-header {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .panel-note {
+        text-align: left;
+    }
+}
+
+@media (max-width: 640px) {
+    .page-shell {
+        width: min(100% - 20px, 1080px);
+        padding-top: 24px;
+    }
+
+    .drop-panel,
+    .gallery-panel {
+        padding: 16px;
+    }
+
+    .drop-zone {
+        min-height: 180px;
+    }
+
+    .field,
+    .summary-row,
+    .card-top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .card-actions,
+    .toolbar-actions {
+        justify-content: stretch;
+    }
+
+    .card-actions button,
+    .toolbar-actions button,
+    #apply-batch,
+    .toolbar-group select {
+        width: 100%;
+    }
+}
