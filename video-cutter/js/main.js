@@ -1,3 +1,5 @@
+import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist/bundles/mediabunny.min.mjs';
+
 'use strict';
 
 (() => {
@@ -166,12 +168,7 @@
     async function exportClip() {
         if (!currentFile || !duration || trimEnd - trimStart < MIN_CLIP_SECONDS) return;
 
-        if (!window.Mediabunny) {
-            setStatus('動画処理ライブラリを読み込めませんでした。通信状態を確認して再読み込みしてください。', 'error');
-            return;
-        }
-
-        const { Input, ALL_FORMATS, BlobSource, Output, BufferTarget, Mp4OutputFormat, WebMOutputFormat, Conversion } = window.Mediabunny;
+        const { Input, ALL_FORMATS, BlobSource, Output, BufferTarget, Mp4OutputFormat, WebMOutputFormat, Conversion } = Mediabunny;
 
         exportButton.disabled = true;
         replaceButton.disabled = true;
