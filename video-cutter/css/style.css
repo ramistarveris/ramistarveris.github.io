@@ -191,6 +191,17 @@ h2 {
     min-width: 0;
 }
 
+.top-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.top-export-button {
+    min-width: 104px;
+}
+
 .back-link {
     display: block;
     width: fit-content;
@@ -311,7 +322,7 @@ h2 {
     min-height: 0;
     flex: 1 1 auto;
     grid-template-columns: minmax(0, 1fr) clamp(285px, 20vw, 330px);
-    grid-template-rows: minmax(0, 1fr) 186px;
+    grid-template-rows: minmax(0, 1fr) 170px;
     grid-template-areas:
         "preview controls"
         "timeline timeline";
@@ -482,23 +493,9 @@ video {
     font-size: 12px;
 }
 
-.export-section {
+.export-status {
     margin-top: auto;
-    padding-top: 11px;
-    border-top: 1px solid var(--line);
-}
-
-.export-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.export-summary strong {
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 650;
+    padding-top: 10px;
 }
 
 .format-badge {
@@ -511,24 +508,8 @@ video {
     font-weight: 650;
 }
 
-.export-note {
-    margin-top: 4px;
-}
-
-.export-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    margin-top: 9px;
-}
-
-.export-actions .primary-button {
-    min-width: 102px;
-}
-
 .progress-block {
-    margin-top: 9px;
+    margin-top: 0;
 }
 
 .progress-copy {
@@ -715,7 +696,7 @@ progress::-moz-progress-bar {
     position: relative;
     display: flex;
     min-width: 38px;
-    height: 72px;
+    height: 58px;
     align-items: stretch;
     border: 1px solid var(--clip-border);
     border-radius: 5px;
@@ -740,38 +721,49 @@ progress::-moz-progress-bar {
     cursor: grabbing;
 }
 
-.timeline-clip.is-drop-before::before,
-.timeline-clip.is-drop-after::after {
+.clip-track::after {
     content: "";
     position: absolute;
-    top: -5px;
-    bottom: -5px;
+    top: 4px;
+    bottom: 4px;
+    left: var(--drop-indicator-x, 0px);
     width: 3px;
-    z-index: 6;
-    border-radius: 3px;
+    z-index: 30;
+    transform: translateX(-50%);
+    border-radius: 999px;
     background: #fff;
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, .45),
+        0 0 10px rgba(255, 255, 255, .72);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .06s linear;
 }
 
-.timeline-clip.is-drop-before::before {
-    left: -3px;
+.clip-track.is-reorder-target::after {
+    opacity: 1;
 }
 
-.timeline-clip.is-drop-after::after {
-    right: -3px;
-}
-
-.clip-audio-button {
+.clip-audio-button,
+.clip-delete-button {
     position: relative;
     z-index: 4;
-    width: 34px;
-    min-width: 34px;
+    width: 30px;
+    min-width: 30px;
     height: 100%;
     min-height: 0;
     padding: 0;
-    border-right: 1px solid var(--clip-border);
     border-radius: 0;
     background: rgba(0, 0, 0, .12);
     color: var(--muted-strong);
+}
+
+.clip-audio-button {
+    border-right: 1px solid var(--clip-border);
+}
+
+.clip-delete-button {
+    border-left: 1px solid var(--clip-border);
 }
 
 .clip-audio-button:hover:not(:disabled) {
@@ -779,9 +771,15 @@ progress::-moz-progress-bar {
     color: var(--text);
 }
 
-.clip-audio-button iconify-icon {
-    width: 19px;
-    height: 19px;
+.clip-delete-button:hover:not(:disabled) {
+    background: rgba(184, 60, 60, .26);
+    color: var(--danger);
+}
+
+.clip-audio-button iconify-icon,
+.clip-delete-button iconify-icon {
+    width: 18px;
+    height: 18px;
 }
 
 .clip-body {
@@ -887,7 +885,7 @@ progress::-moz-progress-bar {
     }
 
     .editor {
-        grid-template-rows: minmax(0, 1fr) 168px;
+        grid-template-rows: minmax(0, 1fr) 156px;
     }
 
     .control-pane {
@@ -895,7 +893,7 @@ progress::-moz-progress-bar {
     }
 
     .timeline-clip {
-        height: 64px;
+        height: 52px;
     }
 }
 
@@ -953,7 +951,7 @@ progress::-moz-progress-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .export-section {
+    .export-status {
         margin-top: 14px;
     }
 }
@@ -1007,7 +1005,7 @@ progress::-moz-progress-bar {
         display: none;
     }
 
-    .export-actions .primary-button {
-        flex: 1;
+    .top-export-button {
+        min-width: 92px;
     }
 }
