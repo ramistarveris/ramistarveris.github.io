@@ -593,16 +593,24 @@ progress::-moz-progress-bar {
 }
 
 .timeline-tool-button {
-    min-height: 28px;
-    padding: 4px 8px;
+    min-height: 30px;
+    padding: 4px 9px;
+    align-items: center;
     color: var(--text);
     font-size: 12px;
     font-weight: 600;
+    line-height: 1;
 }
 
 .timeline-tool-button iconify-icon {
-    width: 17px;
-    height: 17px;
+    display: block;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    align-self: center;
+    font-size: 20px;
+    line-height: 1;
+    vertical-align: middle;
 }
 
 .shortcut-hint,
