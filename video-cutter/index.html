@@ -14,7 +14,7 @@
 <body>
     <div class="shell">
         <header class="topbar">
-            <div>
+            <div class="page-title">
                 <a class="back-link" href="../index.html">← My Projects</a>
                 <h1>Video Cutter</h1>
             </div>
@@ -29,10 +29,10 @@
             </button>
         </header>
 
-        <main>
+        <main class="app-main">
             <p class="description">動画を選んで、残したい範囲を指定して書き出します。動画ファイル自体はサーバーへ送信しません。</p>
 
-            <section class="panel upload-panel" id="uploadPanel" aria-label="動画を追加">
+            <section class="upload-panel" id="uploadPanel" aria-label="動画を追加">
                 <label class="drop-zone" id="dropZone" for="fileInput">
                     <input id="fileInput" type="file" accept="video/*,.mp4,.m4v,.mov,.webm,.mkv" hidden>
                     <span class="drop-icon" aria-hidden="true">＋</span>
@@ -43,11 +43,10 @@
             </section>
 
             <section class="editor" id="editor" hidden aria-label="動画編集">
-                <div class="video-card">
+                <section class="video-card preview-pane" aria-label="動画プレビュー">
                     <div class="video-frame">
                         <video id="video" preload="metadata" playsinline controls></video>
                     </div>
-
                     <div class="file-row">
                         <div class="file-copy">
                             <strong id="fileName"></strong>
@@ -55,24 +54,15 @@
                         </div>
                         <button id="replaceButton" type="button">動画を変更</button>
                     </div>
-                </div>
+                </section>
 
-                <section class="panel trim-panel" aria-labelledby="trimTitle">
-                    <div class="section-head">
+                <aside class="panel control-pane" aria-labelledby="trimTitle">
+                    <div class="control-head">
                         <div>
                             <p class="eyebrow">CUT</p>
-                            <h2 id="trimTitle">残す範囲</h2>
+                            <h2 id="trimTitle">クリップ設定</h2>
                         </div>
                         <strong class="clip-duration" id="clipDuration">0:00.00</strong>
-                    </div>
-
-                    <div class="timeline-wrap">
-                        <div class="timeline-track" aria-hidden="true">
-                            <div class="timeline-selection" id="timelineSelection"></div>
-                            <div class="playhead" id="playhead"></div>
-                        </div>
-                        <input class="range range-start" id="startRange" type="range" min="0" max="1" value="0" step="0.01" aria-label="開始位置">
-                        <input class="range range-end" id="endRange" type="range" min="0" max="1" value="1" step="0.01" aria-label="終了位置">
                     </div>
 
                     <div class="time-grid">
@@ -96,29 +86,46 @@
                         <button id="previewButton" type="button">選択範囲を再生</button>
                         <button id="resetRangeButton" type="button">範囲をリセット</button>
                     </div>
-                </section>
 
-                <section class="panel export-panel" aria-labelledby="exportTitle">
-                    <div class="export-bar">
+                    <section class="export-section" aria-labelledby="exportTitle">
                         <div class="export-summary">
-                            <strong id="exportTitle">書き出し</strong>
+                            <div>
+                                <p class="eyebrow">EXPORT</p>
+                                <strong id="exportTitle">書き出し</strong>
+                            </div>
                             <span class="format-badge" id="formatBadge">MP4</span>
-                            <span class="export-note">必要に応じて再エンコード</span>
                         </div>
+                        <p class="export-note">必要に応じて再エンコードします。</p>
+
+                        <div class="progress-block" id="progressBlock" hidden>
+                            <div class="progress-copy">
+                                <span id="progressLabel">準備中…</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <progress id="progressBar" max="1" value="0"></progress>
+                        </div>
+
                         <div class="export-actions">
                             <button id="cancelButton" type="button" hidden>キャンセル</button>
                             <button class="primary-button" id="exportButton" type="button">書き出す</button>
                         </div>
-                    </div>
+                        <p class="status-text" id="statusText" aria-live="polite"></p>
+                    </section>
+                </aside>
 
-                    <div class="progress-block" id="progressBlock" hidden>
-                        <div class="progress-copy">
-                            <span id="progressLabel">準備中…</span>
-                            <span id="progressPercent">0%</span>
-                        </div>
-                        <progress id="progressBar" max="1" value="0"></progress>
+                <section class="panel timeline-pane" aria-label="カット範囲">
+                    <div class="timeline-head">
+                        <span>Timeline</span>
+                        <span>残す範囲を両端のハンドルで調整</span>
                     </div>
-                    <p class="status-text" id="statusText" aria-live="polite"></p>
+                    <div class="timeline-wrap">
+                        <div class="timeline-track" aria-hidden="true">
+                            <div class="timeline-selection" id="timelineSelection"></div>
+                            <div class="playhead" id="playhead"></div>
+                        </div>
+                        <input class="range range-start" id="startRange" type="range" min="0" max="1" value="0" step="0.01" aria-label="開始位置">
+                        <input class="range range-end" id="endRange" type="range" min="0" max="1" value="1" step="0.01" aria-label="終了位置">
+                    </div>
                 </section>
             </section>
         </main>
