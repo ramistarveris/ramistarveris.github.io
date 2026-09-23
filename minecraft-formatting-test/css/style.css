@@ -126,6 +126,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 }
 
 button svg {
+  display: block;
   width: 17px;
   height: 17px;
   fill: none;
@@ -239,6 +240,24 @@ button,select,input {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 30px;
+}
+
+.page-title {
+  min-width: 0;
+}
+
+.back-link {
+  display: block;
+  width: fit-content;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--text);
 }
 
 .actions {

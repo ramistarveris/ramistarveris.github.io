@@ -100,15 +100,17 @@
                 </section>
 
                 <section class="panel export-panel" aria-labelledby="exportTitle">
-                    <div class="section-head export-head">
-                        <div>
-                            <p class="eyebrow">EXPORT</p>
-                            <h2 id="exportTitle">書き出し</h2>
+                    <div class="export-bar">
+                        <div class="export-summary">
+                            <strong id="exportTitle">書き出し</strong>
+                            <span class="format-badge" id="formatBadge">MP4</span>
+                            <span class="export-note">必要に応じて再エンコード</span>
                         </div>
-                        <span class="format-badge" id="formatBadge">MP4</span>
+                        <div class="export-actions">
+                            <button id="cancelButton" type="button" hidden>キャンセル</button>
+                            <button class="primary-button" id="exportButton" type="button">書き出す</button>
+                        </div>
                     </div>
-
-                    <p class="export-note">開始位置が 0 秒以外の場合、正確なカットのため再エンコードされることがあります。</p>
 
                     <div class="progress-block" id="progressBlock" hidden>
                         <div class="progress-copy">
@@ -116,11 +118,6 @@
                             <span id="progressPercent">0%</span>
                         </div>
                         <progress id="progressBar" max="1" value="0"></progress>
-                    </div>
-
-                    <div class="export-actions">
-                        <button class="primary-button" id="exportButton" type="button">選択範囲を書き出す</button>
-                        <button id="cancelButton" type="button" hidden>キャンセル</button>
                     </div>
                     <p class="status-text" id="statusText" aria-live="polite"></p>
                 </section>
