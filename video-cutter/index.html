@@ -8,6 +8,7 @@
     <meta name="description" content="動画をブラウザ内だけでカットできるシンプルな動画編集ツール">
     <title>Video Cutter</title>
     <script src="./js/theme.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
     <link rel="stylesheet" href="./css/style.css">
     <script type="module" src="./js/main.js"></script>
 </head>
@@ -30,7 +31,7 @@
         </header>
 
         <main class="app-main">
-            <p class="description">動画を選んで、残したい範囲を指定して書き出します。動画ファイル自体はサーバーへ送信しません。</p>
+            <p class="description">動画を選んで、タイムライン上でカット・並び替え・ミュートして書き出します。動画ファイル自体はサーバーへ送信しません。</p>
 
             <section class="upload-panel" id="uploadPanel" aria-label="動画を追加">
                 <label class="drop-zone" id="dropZone" for="fileInput">
@@ -59,11 +60,13 @@
                 <aside class="panel control-pane" aria-labelledby="trimTitle">
                     <div class="control-head">
                         <div>
-                            <p class="eyebrow">CUT</p>
-                            <h2 id="trimTitle">クリップ設定</h2>
+                            <p class="eyebrow">CLIP</p>
+                            <h2 id="trimTitle">選択クリップ</h2>
                         </div>
                         <strong class="clip-duration" id="clipDuration">0:00.00</strong>
                     </div>
+
+                    <p class="control-note">開始・終了は選択中のクリップに適用されます。</p>
 
                     <div class="time-grid">
                         <label class="time-field">
@@ -83,8 +86,14 @@
                     </div>
 
                     <div class="preview-actions">
-                        <button id="previewButton" type="button">選択範囲を再生</button>
-                        <button id="resetRangeButton" type="button">範囲をリセット</button>
+                        <button id="previewButton" type="button">
+                            <iconify-icon icon="mdi:play"></iconify-icon>
+                            タイムライン再生
+                        </button>
+                        <button id="resetRangeButton" type="button">
+                            <iconify-icon icon="mdi:restore"></iconify-icon>
+                            編集をリセット
+                        </button>
                     </div>
 
                     <section class="export-section" aria-labelledby="exportTitle">
@@ -95,7 +104,7 @@
                             </div>
                             <span class="format-badge" id="formatBadge">MP4</span>
                         </div>
-                        <p class="export-note">必要に応じて再エンコードします。</p>
+                        <p class="export-note">クリップ順・カット・ミュートを反映して再エンコードします。</p>
 
                         <div class="progress-block" id="progressBlock" hidden>
                             <div class="progress-copy">
@@ -113,18 +122,34 @@
                     </section>
                 </aside>
 
-                <section class="panel timeline-pane" aria-label="カット範囲">
-                    <div class="timeline-head">
-                        <span>Timeline</span>
-                        <span>残す範囲を両端のハンドルで調整</span>
-                    </div>
-                    <div class="timeline-wrap">
-                        <div class="timeline-track" aria-hidden="true">
-                            <div class="timeline-selection" id="timelineSelection"></div>
-                            <div class="playhead" id="playhead"></div>
+                <section class="panel timeline-pane" id="timelinePane" aria-label="編集タイムライン">
+                    <div class="timeline-toolbar">
+                        <div class="timeline-toolbar-left">
+                            <button class="timeline-tool-button" id="cutButton" type="button" title="再生ヘッドでカット (Ctrl+← / Ctrl+クリック)">
+                                <iconify-icon icon="mdi:content-cut"></iconify-icon>
+                                <span>カット</span>
+                            </button>
+                            <span class="shortcut-hint">Ctrl+← / Ctrl+クリック</span>
                         </div>
-                        <input class="range range-start" id="startRange" type="range" min="0" max="1" value="0" step="0.01" aria-label="開始位置">
-                        <input class="range range-end" id="endRange" type="range" min="0" max="1" value="1" step="0.01" aria-label="終了位置">
+                        <div class="timeline-toolbar-right">
+                            <span id="clipCountLabel">1 clip</span>
+                            <strong id="playheadTimeLabel">0:00.00</strong>
+                        </div>
+                    </div>
+
+                    <div class="timeline-ruler" id="timelineRuler" aria-hidden="true"></div>
+
+                    <div class="timeline-workspace" id="timelineWorkspace">
+                        <div class="track-label">
+                            <iconify-icon icon="mdi:movie-open-outline"></iconify-icon>
+                            <span>Video</span>
+                        </div>
+                        <div class="clip-track" id="clipTrack"></div>
+
+                        <button class="timeline-playhead" id="playhead" type="button" aria-label="再生位置をドラッグ" title="ドラッグして再生位置を移動">
+                            <span class="playhead-handle"></span>
+                            <span class="playhead-line"></span>
+                        </button>
                     </div>
                 </section>
             </section>
