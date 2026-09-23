@@ -5,14 +5,20 @@
     --surface-2: #14161a;
     --hover: #24272e;
     --line: #30343c;
-    --text: #e5e7eb;
-    --muted: #989ea9;
+    --line-strong: #454b55;
+    --text: #eef0f3;
+    --muted: #b6bcc6;
+    --muted-strong: #c9ced6;
     --accent: #a8d9c5;
+    --accent-strong: #c8f1df;
     --button-bg: #e1e5e9;
     --button-text: #181b20;
     --button-hover: #ffffff;
-    --success: #86d6aa;
-    --danger: #ef9a9a;
+    --clip-bg: #25342f;
+    --clip-border: #557066;
+    --clip-selected: #7ba28f;
+    --success: #92deb4;
+    --danger: #f4aaaa;
     --mono: Consolas, "SFMono-Regular", "Liberation Mono", monospace;
     --ui: "Segoe UI", "Noto Sans JP", Meiryo, sans-serif;
 }
@@ -24,12 +30,18 @@
     --surface-2: #f1f3f6;
     --hover: #e8ebef;
     --line: #cdd3dc;
+    --line-strong: #aeb6c2;
     --text: #202630;
-    --muted: #616975;
+    --muted: #505967;
+    --muted-strong: #384250;
     --accent: #217957;
+    --accent-strong: #155f43;
     --button-bg: #252c36;
     --button-text: #ffffff;
     --button-hover: #10151d;
+    --clip-bg: #dcece5;
+    --clip-border: #83aa99;
+    --clip-selected: #4d856d;
     --success: #16824a;
     --danger: #b83c3c;
 }
@@ -55,7 +67,7 @@ body {
     overflow: hidden;
     background: var(--bg);
     color: var(--text);
-    font: 13px/1.6 var(--ui);
+    font: 14px/1.55 var(--ui);
 }
 
 button,
@@ -70,7 +82,7 @@ label {
 
 button {
     display: inline-flex;
-    min-height: 32px;
+    min-height: 34px;
     align-items: center;
     justify-content: center;
     gap: 7px;
@@ -92,7 +104,7 @@ button:active:not(:disabled) {
 
 button:disabled {
     cursor: default;
-    opacity: .35;
+    opacity: .42;
     transform: none;
 }
 
@@ -104,11 +116,15 @@ a:focus-visible,
     outline-offset: 3px;
 }
 
-button svg {
+button svg,
+button iconify-icon {
     display: block;
-    width: 17px;
-    height: 17px;
-    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+button svg {
     fill: none;
     stroke: currentColor;
     stroke-width: 1.7;
@@ -117,15 +133,15 @@ button svg {
 }
 
 button.icon {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     padding: 8px;
 }
 
 .primary-button {
     background: var(--button-bg);
     color: var(--button-text);
-    font-weight: 600;
+    font-weight: 650;
 }
 
 .primary-button:hover:not(:disabled) {
@@ -140,14 +156,14 @@ p {
 }
 
 h1 {
-    font-size: 16px;
-    font-weight: 600;
-    letter-spacing: -.25px;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -.2px;
 }
 
 h2 {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 650;
 }
 
 .shell {
@@ -158,17 +174,17 @@ h2 {
     min-height: 0;
     margin: 0 auto;
     flex-direction: column;
-    padding: 12px 0 14px;
+    padding: 10px 0 12px;
 }
 
 .topbar {
     display: flex;
-    min-height: 38px;
+    min-height: 40px;
     flex: 0 0 auto;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 8px;
+    margin-bottom: 7px;
 }
 
 .page-title {
@@ -178,9 +194,10 @@ h2 {
 .back-link {
     display: block;
     width: fit-content;
-    margin-bottom: 1px;
+    margin-bottom: 2px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
     line-height: 1.25;
     text-decoration: none;
 }
@@ -193,7 +210,8 @@ h2 {
     flex: 0 0 auto;
     margin-bottom: 10px;
     color: var(--muted);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .theme-toggle .theme-moon {
@@ -240,8 +258,8 @@ h2 {
     padding: 20px;
     place-items: center;
     align-content: center;
-    gap: 4px;
-    border: 1px dashed var(--line);
+    gap: 5px;
+    border: 1px dashed var(--line-strong);
     border-radius: 6px;
     background: var(--surface);
     color: var(--muted);
@@ -251,12 +269,13 @@ h2 {
 
 .drop-zone strong {
     color: var(--text);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 650;
 }
 
 .drop-zone > span:not(.drop-icon) {
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .drop-zone:hover,
@@ -267,21 +286,22 @@ h2 {
 
 .drop-icon {
     display: grid;
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     margin-bottom: 4px;
     place-items: center;
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-strong);
     border-radius: 50%;
-    color: var(--muted);
-    font-size: 19px;
+    color: var(--muted-strong);
+    font-size: 20px;
     line-height: 1;
 }
 
 .privacy-note {
-    padding-top: 7px;
+    padding-top: 8px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
     text-align: center;
 }
 
@@ -290,8 +310,8 @@ h2 {
     min-width: 0;
     min-height: 0;
     flex: 1 1 auto;
-    grid-template-columns: minmax(0, 1fr) clamp(270px, 19vw, 320px);
-    grid-template-rows: minmax(0, 1fr) 104px;
+    grid-template-columns: minmax(0, 1fr) clamp(285px, 20vw, 330px);
+    grid-template-rows: minmax(0, 1fr) 186px;
     grid-template-areas:
         "preview controls"
         "timeline timeline";
@@ -332,18 +352,18 @@ video {
 
 .file-row {
     display: flex;
-    min-height: 44px;
+    min-height: 46px;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 6px 10px;
+    padding: 7px 10px;
     border-top: 1px solid var(--line);
 }
 
 .file-copy {
     display: grid;
     min-width: 0;
-    gap: 0;
+    gap: 1px;
 }
 
 .file-copy strong,
@@ -354,13 +374,14 @@ video {
 }
 
 .file-copy strong {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 650;
 }
 
 .file-copy span {
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .control-pane {
@@ -379,28 +400,40 @@ video {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding-bottom: 10px;
+    padding-bottom: 9px;
     border-bottom: 1px solid var(--line);
 }
 
 .eyebrow {
-    margin-bottom: 1px;
+    margin-bottom: 2px;
     color: var(--muted);
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: .14em;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
 }
 
 .clip-duration {
-    color: var(--muted);
-    font: 11px var(--mono);
+    color: var(--muted-strong);
+    font: 12px var(--mono);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+}
+
+.control-note,
+.export-note {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.control-note {
+    margin-top: 8px;
 }
 
 .time-grid {
     display: grid;
-    gap: 10px;
-    margin-top: 12px;
+    gap: 9px;
+    margin-top: 10px;
 }
 
 .time-field {
@@ -409,8 +442,9 @@ video {
 }
 
 .time-field > span {
-    color: var(--muted);
-    font-size: 10px;
+    color: var(--muted-strong);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .time-input-row {
@@ -422,14 +456,18 @@ video {
 .time-input-row input {
     width: 100%;
     min-width: 0;
-    height: 32px;
-    padding: 4px 7px;
+    height: 34px;
+    padding: 5px 8px;
     border: 1px solid var(--line);
     border-radius: 5px;
     background: var(--surface-2);
     color: var(--text);
-    font: 11px var(--mono);
+    font: 12px var(--mono);
     font-variant-numeric: tabular-nums;
+}
+
+.time-input-row button {
+    font-size: 12px;
 }
 
 .preview-actions {
@@ -441,12 +479,12 @@ video {
 
 .preview-actions button {
     min-width: 0;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .export-section {
     margin-top: auto;
-    padding-top: 12px;
+    padding-top: 11px;
     border-top: 1px solid var(--line);
 }
 
@@ -459,24 +497,22 @@ video {
 
 .export-summary strong {
     color: var(--text);
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 650;
 }
 
 .format-badge {
     flex: 0 0 auto;
-    padding: 2px 6px;
-    border: 1px solid var(--line);
+    padding: 2px 7px;
+    border: 1px solid var(--line-strong);
     border-radius: 999px;
-    color: var(--muted);
-    font: 10px var(--mono);
-    font-weight: 600;
+    color: var(--muted-strong);
+    font: 11px var(--mono);
+    font-weight: 650;
 }
 
 .export-note {
     margin-top: 4px;
-    color: var(--muted);
-    font-size: 10px;
 }
 
 .export-actions {
@@ -488,7 +524,7 @@ video {
 }
 
 .export-actions .primary-button {
-    min-width: 96px;
+    min-width: 102px;
 }
 
 .progress-block {
@@ -501,14 +537,15 @@ video {
     justify-content: space-between;
     gap: 10px;
     margin-bottom: 4px;
-    color: var(--muted);
-    font-size: 10px;
+    color: var(--muted-strong);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 progress {
     display: block;
     width: 100%;
-    height: 5px;
+    height: 6px;
     overflow: hidden;
     border: 0;
     border-radius: 999px;
@@ -528,7 +565,8 @@ progress::-moz-progress-bar {
 .status-text {
     margin-top: 6px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
     overflow-wrap: anywhere;
 }
 
@@ -545,115 +583,291 @@ progress::-moz-progress-bar {
 }
 
 .timeline-pane {
+    position: relative;
     display: grid;
     min-width: 0;
     min-height: 0;
     grid-area: timeline;
-    grid-template-rows: auto minmax(0, 1fr);
-    padding: 8px 12px 7px;
+    grid-template-rows: 38px 22px minmax(0, 1fr);
+    padding: 0;
+    overflow: hidden;
 }
 
-.timeline-head {
+.timeline-toolbar {
     display: flex;
+    min-width: 0;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    color: var(--muted);
-    font-size: 9px;
+    padding: 5px 9px;
+    border-bottom: 1px solid var(--line);
 }
 
-.timeline-head span:first-child {
+.timeline-toolbar-left,
+.timeline-toolbar-right {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+}
+
+.timeline-tool-button {
+    min-height: 28px;
+    padding: 4px 8px;
     color: var(--text);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: .02em;
 }
 
-.timeline-wrap {
+.timeline-tool-button iconify-icon {
+    width: 17px;
+    height: 17px;
+}
+
+.shortcut-hint,
+.timeline-toolbar-right {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.timeline-toolbar-right strong {
+    color: var(--text);
+    font: 12px var(--mono);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+.timeline-ruler {
     position: relative;
-    height: 48px;
-    margin: 0 2px;
-    align-self: center;
-}
-
-.timeline-track {
-    position: absolute;
-    top: 20px;
-    right: 0;
-    left: 0;
-    height: 8px;
+    margin-left: 82px;
+    border-bottom: 1px solid var(--line);
+    background:
+        repeating-linear-gradient(
+            90deg,
+            transparent 0,
+            transparent calc(10% - 1px),
+            var(--line) calc(10% - 1px),
+            var(--line) 10%
+        );
     overflow: hidden;
-    border-radius: 999px;
-    background: var(--hover);
 }
 
-.timeline-selection {
+.ruler-label {
     position: absolute;
-    inset-block: 0;
-    left: 0;
-    width: 100%;
-    border-radius: inherit;
-    background: var(--accent);
+    top: 2px;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font: 10px var(--mono);
+    font-weight: 600;
+    white-space: nowrap;
 }
 
-.playhead {
-    position: absolute;
-    top: -7px;
-    bottom: -7px;
-    width: 2px;
-    margin-left: -1px;
-    border-radius: 2px;
-    background: var(--text);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, .2);
+.ruler-label:first-child {
+    transform: none;
 }
 
-.range {
+.ruler-label:last-child {
+    transform: translateX(-100%);
+}
+
+.timeline-workspace {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: stretch;
+    background: var(--surface-2);
+    user-select: none;
+}
+
+.track-label {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px;
+    border-right: 1px solid var(--line);
+    color: var(--muted-strong);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.track-label iconify-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+.clip-track {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 8px;
+    overflow: hidden;
+}
+
+.timeline-clip {
+    position: relative;
+    display: flex;
+    min-width: 38px;
+    height: 72px;
+    align-items: stretch;
+    border: 1px solid var(--clip-border);
+    border-radius: 5px;
+    background: var(--clip-bg);
+    color: var(--text);
+    cursor: grab;
+    overflow: hidden;
+    transition: border-color .1s, box-shadow .1s, transform .1s;
+}
+
+.timeline-clip:hover {
+    border-color: var(--clip-selected);
+}
+
+.timeline-clip.is-selected {
+    border-color: var(--accent-strong);
+    box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+.timeline-clip.is-dragging {
+    opacity: .55;
+    cursor: grabbing;
+}
+
+.timeline-clip.is-drop-before::before,
+.timeline-clip.is-drop-after::after {
+    content: "";
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 48px;
-    margin: 0;
-    appearance: none;
-    background: transparent;
+    top: -5px;
+    bottom: -5px;
+    width: 3px;
+    z-index: 6;
+    border-radius: 3px;
+    background: #fff;
+}
+
+.timeline-clip.is-drop-before::before {
+    left: -3px;
+}
+
+.timeline-clip.is-drop-after::after {
+    right: -3px;
+}
+
+.clip-audio-button {
+    position: relative;
+    z-index: 4;
+    width: 34px;
+    min-width: 34px;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    border-right: 1px solid var(--clip-border);
+    border-radius: 0;
+    background: rgba(0, 0, 0, .12);
+    color: var(--muted-strong);
+}
+
+.clip-audio-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, .08);
+    color: var(--text);
+}
+
+.clip-audio-button iconify-icon {
+    width: 19px;
+    height: 19px;
+}
+
+.clip-body {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    padding: 7px 8px;
     pointer-events: none;
 }
 
-.range::-webkit-slider-runnable-track,
-.range::-moz-range-track {
-    height: 8px;
-    background: transparent;
+.clip-name,
+.clip-time {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.range::-webkit-slider-thumb {
+.clip-name {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.clip-time {
+    margin-top: 2px;
+    color: var(--muted-strong);
+    font: 11px var(--mono);
+    font-weight: 600;
+}
+
+.timeline-clip.is-muted .clip-body {
+    opacity: .64;
+}
+
+.timeline-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 82px;
     width: 18px;
-    height: 22px;
-    margin-top: -7px;
-    appearance: none;
-    border: 3px solid var(--surface);
-    border-radius: 5px;
-    background: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
+    min-height: 0;
+    margin-left: -9px;
+    padding: 0;
+    z-index: 20;
+    border-radius: 0;
+    background: transparent;
+    color: #fff;
     cursor: ew-resize;
-    pointer-events: auto;
+    touch-action: none;
 }
 
-.range::-moz-range-thumb {
+.timeline-playhead:hover,
+.timeline-playhead:active {
+    background: transparent !important;
+    transform: none !important;
+}
+
+.playhead-handle {
+    position: absolute;
+    top: 2px;
+    left: 50%;
     width: 12px;
-    height: 16px;
-    border: 3px solid var(--surface);
-    border-radius: 4px;
-    background: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
-    cursor: ew-resize;
-    pointer-events: auto;
+    height: 10px;
+    transform: translateX(-50%);
+    border-radius: 3px 3px 1px 1px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
 }
 
-.range-start {
-    z-index: 3;
+.playhead-line {
+    position: absolute;
+    top: 9px;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .22);
 }
 
-.range-end {
-    z-index: 4;
+.timeline-pane.is-snapping .playhead-line,
+.timeline-pane.is-snapping .playhead-handle {
+    background: var(--accent-strong);
 }
 
 .noscript-notice {
@@ -661,41 +875,27 @@ progress::-moz-progress-bar {
     text-align: center;
 }
 
-@media (max-height: 720px) and (min-width: 901px) {
+@media (max-height: 760px) and (min-width: 901px) {
     .shell {
-        padding-top: 8px;
-        padding-bottom: 8px;
+        padding-top: 7px;
+        padding-bottom: 7px;
     }
 
     .topbar {
-        min-height: 34px;
+        min-height: 36px;
         margin-bottom: 5px;
     }
 
     .editor {
-        grid-template-rows: minmax(0, 1fr) 88px;
+        grid-template-rows: minmax(0, 1fr) 168px;
     }
 
     .control-pane {
         padding: 9px;
     }
 
-    .time-grid {
-        gap: 6px;
-        margin-top: 8px;
-    }
-
-    .preview-actions {
-        margin-top: 7px;
-    }
-
-    .export-section {
-        padding-top: 8px;
-    }
-
-    .timeline-pane {
-        padding-top: 5px;
-        padding-bottom: 4px;
+    .timeline-clip {
+        height: 64px;
     }
 }
 
@@ -728,18 +928,12 @@ progress::-moz-progress-bar {
     }
 
     .editor {
-        display: grid;
-        min-height: 0;
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto 180px auto;
         grid-template-areas:
             "preview"
             "timeline"
             "controls";
-    }
-
-    .video-card {
-        min-height: 0;
     }
 
     .video-frame {
@@ -757,10 +951,6 @@ progress::-moz-progress-bar {
 
     .time-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .timeline-pane {
-        min-height: 94px;
     }
 
     .export-section {
@@ -791,7 +981,29 @@ progress::-moz-progress-bar {
         grid-template-columns: 1fr;
     }
 
-    .timeline-head span:last-child {
+    .shortcut-hint,
+    #clipCountLabel {
+        display: none;
+    }
+
+    .track-label,
+    .timeline-playhead {
+        left: 64px;
+    }
+
+    .timeline-ruler {
+        margin-left: 64px;
+    }
+
+    .timeline-workspace {
+        grid-template-columns: 64px minmax(0, 1fr);
+    }
+
+    .track-label {
+        padding: 0 7px;
+    }
+
+    .track-label span {
         display: none;
     }
 
