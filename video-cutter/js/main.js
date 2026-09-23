@@ -6,6 +6,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const MIN_CLIP_SECONDS = 0.05;
     const SNAP_PIXELS = 12;
     const EPSILON = 0.001;
+    const SEAMLESS_SOURCE_EPSILON = 0.003;
     const HISTORY_LIMIT = 100;
 
     const fileInput = document.getElementById('fileInput');
@@ -59,6 +60,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     let cancelledByUser = false;
     let undoStack = [];
     let redoStack = [];
+    let playbackFrameCallbackId = null;
+    let transitioningClip = false;
 
     function formatTime(seconds) {
         const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -730,6 +733,53 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         updatePlayheadVisual();
     }
 
+    function cancelPlaybackFrameMonitor() {
+        if (
+            playbackFrameCallbackId !== null
+            && typeof video.cancelVideoFrameCallback === 'function'
+        ) {
+            video.cancelVideoFrameCallback(playbackFrameCallbackId);
+        }
+        playbackFrameCallbackId = null;
+    }
+
+    function schedulePlaybackFrameMonitor() {
+        if (
+            !playingTimeline
+            || video.paused
+            || transitioningClip
+            || playbackFrameCallbackId !== null
+            || typeof video.requestVideoFrameCallback !== 'function'
+        ) {
+            return;
+        }
+
+        playbackFrameCallbackId = video.requestVideoFrameCallback((_now, metadata) => {
+            playbackFrameCallbackId = null;
+
+            if (!playingTimeline || video.paused || transitioningClip) return;
+
+            const clip = clips.find((item) => item.id === activeClipId);
+            if (!clip) return;
+
+            const mediaTime = Number.isFinite(metadata?.mediaTime)
+                ? metadata.mediaTime
+                : video.currentTime;
+
+            if (mediaTime >= clip.sourceEnd - EPSILON) {
+                transitioningClip = true;
+                advanceToNextClip().finally(() => {
+                    transitioningClip = false;
+                    schedulePlaybackFrameMonitor();
+                });
+                return;
+            }
+
+            syncLogicalFromVideo();
+            schedulePlaybackFrameMonitor();
+        });
+    }
+
     async function advanceToNextClip() {
         const spans = getTimelineSpans();
         const index = spans.findIndex((span) => span.clip.id === activeClipId);
@@ -737,20 +787,42 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (index < 0 || index >= spans.length - 1) {
             playingTimeline = false;
             logicalTime = getTimelineDuration();
+            cancelPlaybackFrameMonitor();
             video.pause();
             setPreviewButtonState(false);
             updatePlayheadVisual();
             return;
         }
 
+        const current = spans[index];
         const next = spans[index + 1];
+        const sourceIsContinuous = (
+            Math.abs(current.clip.sourceEnd - next.clip.sourceStart)
+            <= SEAMLESS_SOURCE_EPSILON
+        );
+
         activeClipId = next.clip.id;
-        logicalTime = next.start;
         video.muted = next.clip.muted;
+
+        if (sourceIsContinuous) {
+            // A normal split of one source video is already continuous in the
+            // media element. Seeking back to the exact cut point causes a
+            // visible/audio hiccup, so only switch the logical clip here.
+            const carriedOffset = clamp(
+                video.currentTime - next.clip.sourceStart,
+                0,
+                getClipDuration(next.clip),
+            );
+            logicalTime = next.start + carriedOffset;
+            updatePlayheadVisual();
+            return;
+        }
+
+        logicalTime = next.start;
         seekVideoTo(next.clip.sourceStart);
         updatePlayheadVisual();
 
-        if (playingTimeline) {
+        if (playingTimeline && video.paused) {
             try {
                 await video.play();
             } catch {
@@ -1174,9 +1246,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     video.addEventListener('play', () => {
         playingTimeline = true;
         setPreviewButtonState(true);
+        schedulePlaybackFrameMonitor();
     });
 
     video.addEventListener('pause', () => {
+        cancelPlaybackFrameMonitor();
         if (!video.ended) {
             playingTimeline = false;
             setPreviewButtonState(false);
@@ -1187,8 +1261,16 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const clip = clips.find((item) => item.id === activeClipId);
         if (!clip) return;
 
-        if (playingTimeline && video.currentTime >= clip.sourceEnd - 0.035) {
-            advanceToNextClip();
+        if (
+            playingTimeline
+            && typeof video.requestVideoFrameCallback !== 'function'
+            && !transitioningClip
+            && video.currentTime >= clip.sourceEnd - 0.012
+        ) {
+            transitioningClip = true;
+            advanceToNextClip().finally(() => {
+                transitioningClip = false;
+            });
             return;
         }
 
@@ -1375,6 +1457,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     window.addEventListener('resize', updatePlayheadVisual);
 
     window.addEventListener('beforeunload', () => {
+        cancelPlaybackFrameMonitor();
         if (objectUrl) URL.revokeObjectURL(objectUrl);
     });
 })();
