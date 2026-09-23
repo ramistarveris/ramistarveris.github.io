@@ -6,6 +6,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const MIN_CLIP_SECONDS = 0.05;
     const SNAP_PIXELS = 12;
     const EPSILON = 0.001;
+    const HISTORY_LIMIT = 100;
 
     const fileInput = document.getElementById('fileInput');
     const dropZone = document.getElementById('dropZone');
@@ -56,6 +57,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     let draggedClipId = null;
     let exportJob = null;
     let cancelledByUser = false;
+    let undoStack = [];
+    let redoStack = [];
 
     function formatTime(seconds) {
         const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -105,6 +108,84 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             sourceEnd,
             muted,
         };
+    }
+
+    function captureEditorState() {
+        return {
+            clips: clips.map((clip) => ({ ...clip })),
+            clipIdCounter,
+            selectedClipId,
+            activeClipId,
+            logicalTime,
+        };
+    }
+
+    function pushUndoState() {
+        if (exportJob) return;
+        undoStack.push(captureEditorState());
+        if (undoStack.length > HISTORY_LIMIT) {
+            undoStack.shift();
+        }
+        redoStack = [];
+    }
+
+    function restoreEditorState(state) {
+        if (!state) return;
+
+        video.pause();
+        playingTimeline = false;
+        setPreviewButtonState(false);
+
+        clips = state.clips.map((clip) => ({ ...clip }));
+        clipIdCounter = state.clipIdCounter;
+        logicalTime = clamp(state.logicalTime, 0, getTimelineDuration());
+
+        selectedClipId = clips.some((clip) => clip.id === state.selectedClipId)
+            ? state.selectedClipId
+            : clips[0]?.id ?? null;
+        activeClipId = clips.some((clip) => clip.id === state.activeClipId)
+            ? state.activeClipId
+            : selectedClipId;
+
+        setStatus('');
+        renderTimeline();
+
+        if (!clips.length) {
+            selectedClipId = null;
+            activeClipId = null;
+            logicalTime = 0;
+            video.muted = false;
+            exportButton.disabled = true;
+            updateControlPanel();
+            updatePlayheadVisual();
+            return;
+        }
+
+        const span = getSpanByClipId(activeClipId)
+            || findSpanAtTimelineTime(logicalTime)
+            || getTimelineSpans()[0];
+
+        activeClipId = span.clip.id;
+        video.muted = span.clip.muted;
+
+        const offset = clamp(logicalTime - span.start, 0, getClipDuration(span.clip));
+        const sourceTime = span.clip.sourceStart + offset;
+        seekVideoTo(sourceTime);
+        updatePlayheadVisual();
+    }
+
+    function undoEdit() {
+        if (exportJob || !undoStack.length) return;
+        redoStack.push(captureEditorState());
+        const state = undoStack.pop();
+        restoreEditorState(state);
+    }
+
+    function redoEdit() {
+        if (exportJob || !redoStack.length) return;
+        undoStack.push(captureEditorState());
+        const state = redoStack.pop();
+        restoreEditorState(state);
     }
 
     function getClipDuration(clip) {
@@ -161,7 +242,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         progressPercent.textContent = '0%';
         progressLabel.textContent = '準備中…';
         cancelButton.hidden = true;
-        exportButton.disabled = false;
+        exportButton.disabled = !currentFile || !sourceDuration || !clips.length;
         replaceButton.disabled = false;
         setStatus('');
     }
@@ -240,14 +321,28 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             time.className = 'clip-time';
             time.textContent = `${formatTime(clip.sourceStart)} – ${formatTime(clip.sourceEnd)}`;
 
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'clip-delete-button';
+            deleteButton.type = 'button';
+            deleteButton.title = 'クリップを削除';
+            deleteButton.setAttribute('aria-label', deleteButton.title);
+            deleteButton.innerHTML = '<iconify-icon icon="mdi:trash-can-outline"></iconify-icon>';
+
             body.append(name, time);
-            clipElement.append(audioButton, body);
+            clipElement.append(audioButton, body, deleteButton);
 
             audioButton.addEventListener('pointerdown', (event) => event.stopPropagation());
             audioButton.addEventListener('dragstart', (event) => event.preventDefault());
             audioButton.addEventListener('click', (event) => {
                 event.stopPropagation();
                 toggleClipMute(clip.id);
+            });
+
+            deleteButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+            deleteButton.addEventListener('dragstart', (event) => event.preventDefault());
+            deleteButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                deleteClip(clip.id);
             });
 
             clipElement.addEventListener('click', () => {
@@ -290,6 +385,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         });
 
         clipCountLabel.textContent = `${clips.length} clip${clips.length === 1 ? '' : 's'} · ${formatTime(total)}`;
+        exportButton.disabled = Boolean(exportJob) || !currentFile || !clips.length;
         renderRuler();
         updateControlPanel();
         updatePlayheadVisual();
@@ -358,6 +454,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const movingIndex = clips.findIndex((clip) => clip.id === movingId);
         if (movingIndex < 0) return;
 
+        pushUndoState();
         const [moving] = clips.splice(movingIndex, 1);
         let targetIndex = clips.findIndex((clip) => clip.id === targetId);
         if (targetIndex < 0) {
@@ -393,6 +490,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!clip) return;
 
         const anchor = capturePlayheadAnchor();
+        pushUndoState();
         clip.muted = !clip.muted;
 
         if (activeClipId === clip.id) {
@@ -401,6 +499,42 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         renderTimeline();
         restorePlayheadAnchor(anchor, false);
+    }
+
+    function deleteClip(id = selectedClipId) {
+        if (exportJob || !id) return;
+
+        const index = clips.findIndex((clip) => clip.id === id);
+        if (index < 0) return;
+
+        pushUndoState();
+        video.pause();
+        clips.splice(index, 1);
+
+        if (!clips.length) {
+            selectedClipId = null;
+            activeClipId = null;
+            logicalTime = 0;
+            video.muted = false;
+            setStatus('');
+            renderTimeline();
+            updatePlayheadVisual();
+            return;
+        }
+
+        const nextClip = clips[Math.min(index, clips.length - 1)];
+        selectedClipId = nextClip.id;
+        activeClipId = nextClip.id;
+        setStatus('');
+        renderTimeline();
+
+        const span = getSpanByClipId(nextClip.id);
+        if (span) {
+            logicalTime = span.start;
+            video.muted = nextClip.muted;
+            seekVideoTo(nextClip.sourceStart);
+            updatePlayheadVisual();
+        }
     }
 
     function updatePlayheadVisual() {
@@ -516,6 +650,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
 
         const index = clips.findIndex((item) => item.id === clip.id);
+        pushUndoState();
         const left = {
             ...clip,
             sourceEnd: sourceCut,
@@ -542,12 +677,24 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!clip || !Number.isFinite(value)) return;
 
         const anchor = capturePlayheadAnchor();
+        const nextStart = kind === 'start'
+            ? clamp(value, 0, clip.sourceEnd - MIN_CLIP_SECONDS)
+            : clip.sourceStart;
+        const nextEnd = kind === 'end'
+            ? clamp(value, clip.sourceStart + MIN_CLIP_SECONDS, sourceDuration)
+            : clip.sourceEnd;
 
-        if (kind === 'start') {
-            clip.sourceStart = clamp(value, 0, clip.sourceEnd - MIN_CLIP_SECONDS);
-        } else {
-            clip.sourceEnd = clamp(value, clip.sourceStart + MIN_CLIP_SECONDS, sourceDuration);
+        if (
+            Math.abs(nextStart - clip.sourceStart) <= EPSILON
+            && Math.abs(nextEnd - clip.sourceEnd) <= EPSILON
+        ) {
+            updateControlPanel();
+            return;
         }
+
+        pushUndoState();
+        clip.sourceStart = nextStart;
+        clip.sourceEnd = nextEnd;
 
         renderTimeline();
 
@@ -642,6 +789,14 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (exportJob) return;
 
         currentFile = file;
+        clips = [];
+        selectedClipId = null;
+        activeClipId = null;
+        logicalTime = 0;
+        sourceDuration = 0;
+        undoStack = [];
+        redoStack = [];
+        exportButton.disabled = true;
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         objectUrl = URL.createObjectURL(file);
 
@@ -974,6 +1129,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         fileMeta.textContent = `${formatBytes(currentFile?.size || 0)} · ${dimensions} · ${formatTime(sourceDuration)}`;
         formatBadge.textContent = 'MP4';
+        undoStack = [];
+        redoStack = [];
         resetClips(false);
         seekVideoTo(0);
     });
@@ -1071,6 +1228,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     });
 
     resetRangeButton.addEventListener('click', () => {
+        if (!sourceDuration || exportJob) return;
+        pushUndoState();
         video.pause();
         playingTimeline = false;
         setPreviewButtonState(false);
@@ -1109,7 +1268,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     });
 
     timelineWorkspace.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0 || event.target.closest('.clip-audio-button')) return;
+        if (event.button !== 0 || event.target.closest('.clip-audio-button, .clip-delete-button')) return;
 
         if (event.ctrlKey) {
             event.preventDefault();
@@ -1146,6 +1305,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             || target instanceof HTMLTextAreaElement
             || target?.isContentEditable
         );
+
+        const key = event.key.toLowerCase();
+
+        if (!typing && event.ctrlKey && !event.shiftKey && key === 'z') {
+            event.preventDefault();
+            undoEdit();
+            return;
+        }
+
+        if (!typing && event.ctrlKey && key === 'y') {
+            event.preventDefault();
+            redoEdit();
+            return;
+        }
+
+        if (!typing && event.key === 'Delete') {
+            event.preventDefault();
+            deleteClip();
+            return;
+        }
 
         if (!typing && event.ctrlKey && event.key === 'ArrowLeft') {
             event.preventDefault();
