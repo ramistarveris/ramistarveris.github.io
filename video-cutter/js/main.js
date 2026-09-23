@@ -274,14 +274,16 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 clearDropIndicators();
                 const rect = clipElement.getBoundingClientRect();
                 const before = event.clientX < rect.left + rect.width / 2;
-                clipElement.classList.add(before ? 'is-drop-before' : 'is-drop-after');
+                showDropIndicator(clipElement, before);
             });
 
             clipElement.addEventListener('drop', (event) => {
                 if (!draggedClipId || draggedClipId === clip.id) return;
                 event.preventDefault();
                 const rect = clipElement.getBoundingClientRect();
-                reorderClip(draggedClipId, clip.id, event.clientX < rect.left + rect.width / 2);
+                const before = event.clientX < rect.left + rect.width / 2;
+                clearDropIndicators();
+                reorderClip(draggedClipId, clip.id, before);
             });
 
             clipTrack.appendChild(clipElement);
@@ -293,7 +295,23 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         updatePlayheadVisual();
     }
 
+    function showDropIndicator(targetElement, before) {
+        const trackRect = clipTrack.getBoundingClientRect();
+        const targetRect = targetElement.getBoundingClientRect();
+        const targetX = before
+            ? targetRect.left - trackRect.left
+            : targetRect.right - trackRect.left;
+
+        clipTrack.style.setProperty(
+            '--drop-indicator-x',
+            `${clamp(targetX, 0, trackRect.width)}px`,
+        );
+        clipTrack.classList.add('is-reorder-target');
+    }
+
     function clearDropIndicators() {
+        clipTrack.classList.remove('is-reorder-target');
+        clipTrack.style.removeProperty('--drop-indicator-x');
         clipTrack.querySelectorAll('.is-drop-before, .is-drop-after').forEach((element) => {
             element.classList.remove('is-drop-before', 'is-drop-after');
         });
@@ -1121,7 +1139,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         seekLogical(time, { snap: true });
     });
 
-    document.addEventListener('keydown', (event) => {
+    document.addEventListener('keydown', async (event) => {
         const target = event.target;
         const typing = (
             target instanceof HTMLInputElement
@@ -1132,6 +1150,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!typing && event.ctrlKey && event.key === 'ArrowLeft') {
             event.preventDefault();
             splitAtPlayhead();
+            return;
+        }
+
+        const plainSpace = (
+            !typing
+            && event.code === 'Space'
+            && !event.ctrlKey
+            && !event.metaKey
+            && !event.altKey
+        );
+
+        if (plainSpace) {
+            event.preventDefault();
+            if (event.repeat || !currentFile || !getTimelineDuration()) return;
+
+            if (!video.paused) {
+                video.pause();
+            } else {
+                await startTimelinePlayback();
+            }
         }
     });
 
