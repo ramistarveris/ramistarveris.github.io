@@ -740,24 +740,27 @@ progress::-moz-progress-bar {
     cursor: grabbing;
 }
 
-.timeline-clip.is-drop-before::before,
-.timeline-clip.is-drop-after::after {
+.clip-track::after {
     content: "";
     position: absolute;
-    top: -5px;
-    bottom: -5px;
+    top: 4px;
+    bottom: 4px;
+    left: var(--drop-indicator-x, 0px);
     width: 3px;
-    z-index: 6;
-    border-radius: 3px;
+    z-index: 30;
+    transform: translateX(-50%);
+    border-radius: 999px;
     background: #fff;
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, .45),
+        0 0 10px rgba(255, 255, 255, .72);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .06s linear;
 }
 
-.timeline-clip.is-drop-before::before {
-    left: -3px;
-}
-
-.timeline-clip.is-drop-after::after {
-    right: -3px;
+.clip-track.is-reorder-target::after {
+    opacity: 1;
 }
 
 .clip-audio-button {
