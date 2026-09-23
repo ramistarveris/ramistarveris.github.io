@@ -650,7 +650,25 @@ progress::-moz-progress-bar {
             var(--line) calc(10% - 1px),
             var(--line) 10%
         );
-    opacity: .9;
+    overflow: hidden;
+}
+
+.ruler-label {
+    position: absolute;
+    top: 2px;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font: 10px var(--mono);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ruler-label:first-child {
+    transform: none;
+}
+
+.ruler-label:last-child {
+    transform: translateX(-100%);
 }
 
 .timeline-workspace {
