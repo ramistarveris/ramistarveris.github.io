@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Hypixel SkyBlock F7/M7 P3 terminal trainer with solver-style overlays.">
+  <title>F7 / M7 P3 Terminal Trainer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <a class="back-link" href="../">← My Projects</a>
+        <h1>F7 / M7 P3 Terminal Trainer</h1>
+        <p class="subtitle">Hypixel SkyBlock の P3 ターミナルをブラウザで練習。Solver 表示つき。</p>
+      </div>
+      <div class="top-actions">
+        <label class="switch-row">
+          <input id="solverToggle" type="checkbox" checked>
+          <span>Solver</span>
+        </label>
+        <label class="switch-row">
+          <input id="autoNextToggle" type="checkbox" checked>
+          <span>Auto next</span>
+        </label>
+      </div>
+    </header>
+
+    <section class="mode-strip" aria-label="Terminal type">
+      <button class="mode-btn active" data-mode="random">Random</button>
+      <button class="mode-btn" data-mode="numbers">Numbers</button>
+      <button class="mode-btn" data-mode="colors">Colors</button>
+      <button class="mode-btn" data-mode="startswith">Starts With</button>
+      <button class="mode-btn" data-mode="redgreen">Red / Green</button>
+      <button class="mode-btn" data-mode="rubix">Rubix</button>
+      <button class="mode-btn" data-mode="melody">Melody</button>
+    </section>
+
+    <section class="stats-bar" aria-label="Round stats">
+      <div class="stat"><span class="stat-label">TIME</span><strong id="timeValue">0.000</strong></div>
+      <div class="stat"><span class="stat-label">PB</span><strong id="pbValue">--</strong></div>
+      <div class="stat"><span class="stat-label">MISTAKES</span><strong id="mistakeValue">0</strong></div>
+      <div class="stat"><span class="stat-label">CLEAN STREAK</span><strong id="streakValue">0</strong></div>
+      <div class="stat"><span class="stat-label">SOLVED</span><strong id="solvedValue">0</strong></div>
+    </section>
+
+    <section class="workspace">
+      <div class="terminal-wrap">
+        <div id="terminalCard" class="terminal-card">
+          <div class="terminal-head">
+            <div>
+              <span class="terminal-kicker">[P3 TERMINAL]</span>
+              <h2 id="terminalName">Numbers</h2>
+            </div>
+            <span id="roundState" class="round-state">READY</span>
+          </div>
+
+          <div id="prompt" class="prompt">Click in order!</div>
+          <div id="grid" class="inventory-grid" role="grid" aria-label="Terminal inventory"></div>
+
+          <div class="terminal-footer">
+            <span id="progressText">0 / 0</span>
+            <span id="inputHint">Left click</span>
+          </div>
+          <div id="flashLayer" class="flash-layer" aria-hidden="true"></div>
+        </div>
+
+        <div class="round-actions">
+          <button id="restartBtn" class="secondary-btn">Restart <kbd>R</kbd></button>
+          <button id="nextBtn" class="primary-btn">New terminal <kbd>N</kbd></button>
+        </div>
+      </div>
+
+      <aside class="info-panel">
+        <section>
+          <span class="eyebrow">HOW TO PLAY</span>
+          <h3 id="instructionTitle">Numbers</h3>
+          <p id="instructionText"></p>
+        </section>
+
+        <section>
+          <span class="eyebrow">SOLVER VIEW</span>
+          <div id="solverLegend" class="solver-legend"></div>
+        </section>
+
+        <section class="key-list">
+          <span class="eyebrow">KEYS</span>
+          <div><kbd>R</kbd><span>同じ問題をやり直す</span></div>
+          <div><kbd>N</kbd><span>新しい問題</span></div>
+          <div><kbd>S</kbd><span>Solver 表示切替</span></div>
+          <div><kbd>Shift</kbd><span>Rubix の右クリック代用</span></div>
+        </section>
+
+        <section class="reference-note">
+          <span class="eyebrow">REFERENCE</span>
+          <p>公開実装の solver 表示・解法を参考にした練習用シミュレーターです。</p>
+          <div class="reference-links">
+            <a href="https://github.com/SoshimeeDeveloper/Soshimee-Addons" target="_blank" rel="noreferrer">Soshimee Addons ↗</a>
+            <a href="https://github.com/Noamm9/NoammAddons" target="_blank" rel="noreferrer">Noamm Addons ↗</a>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
