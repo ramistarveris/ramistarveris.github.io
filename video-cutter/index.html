@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark light">
     <meta name="theme-color" content="#101114">
-    <meta name="description" content="動画をブラウザ内だけでカットできるシンプルな動画編集ツール">
-    <title>Video Cutter</title>
+    <meta name="description" content="ブラウザ内だけで動くクライアントサイド動画編集ツール">
+    <title>Video Editor</title>
     <script src="./js/theme.js"></script>
     <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
     <link rel="stylesheet" href="./css/style.css">
@@ -17,11 +17,14 @@
         <header class="topbar">
             <div class="page-title">
                 <a class="back-link" href="../index.html">← My Projects</a>
-                <h1>Video Cutter</h1>
+                <h1>Video Editor</h1>
             </div>
             <div class="top-actions">
                 <button id="cancelButton" type="button" hidden>キャンセル</button>
-                <button class="primary-button top-export-button" id="exportButton" type="button" disabled>書き出す</button>
+                <button class="primary-button top-export-button" id="exportButton" type="button" disabled>
+                    <iconify-icon icon="mdi:export"></iconify-icon>
+                    書き出す
+                </button>
                 <button class="icon theme-toggle" id="themeToggle" type="button" title="Switch to light mode" aria-label="Switch to light mode">
                     <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <circle cx="12" cy="12" r="4"></circle>
@@ -35,7 +38,7 @@
         </header>
 
         <main class="app-main">
-            <p class="description">動画を選んで、タイムライン上でカット・並び替え・ミュートして書き出します。動画ファイル自体はサーバーへ送信しません。</p>
+            <p class="description">動画・画像・音声をタイムラインで編集して、すべてブラウザ内だけで書き出します。</p>
 
             <section class="upload-panel" id="uploadPanel" aria-label="動画を追加">
                 <label class="drop-zone" id="dropZone" for="fileInput">
@@ -44,13 +47,17 @@
                     <strong>動画を追加</strong>
                     <span>ドラッグ&amp;ドロップ または クリック</span>
                 </label>
-                <p class="privacy-note">処理はこのブラウザ内で実行されます。</p>
+                <p class="privacy-note">動画・画像・音声はサーバーへ送信されません。</p>
             </section>
 
             <section class="editor" id="editor" hidden aria-label="動画編集">
                 <section class="video-card preview-pane" aria-label="動画プレビュー">
-                    <div class="video-frame">
-                        <video id="video" preload="metadata" playsinline controls></video>
+                    <div class="video-frame" id="videoFrame">
+                        <div class="scene-stage" id="sceneStage">
+                            <video id="video" preload="metadata" playsinline controls></video>
+                            <canvas class="effect-canvas" id="effectCanvas" hidden></canvas>
+                            <div class="image-overlay-stage" id="imageOverlayStage" aria-hidden="true"></div>
+                        </div>
                     </div>
                     <div class="file-row">
                         <div class="file-copy">
@@ -61,44 +68,136 @@
                     </div>
                 </section>
 
-                <aside class="panel control-pane" aria-labelledby="trimTitle">
-                    <div class="control-head">
-                        <div>
-                            <p class="eyebrow">CLIP</p>
-                            <h2 id="trimTitle">選択クリップ</h2>
+                <aside class="panel control-pane">
+                    <section class="inspector-section project-settings" aria-labelledby="projectTitle">
+                        <div class="control-head">
+                            <div>
+                                <p class="eyebrow">PROJECT</p>
+                                <h2 id="projectTitle">出力設定</h2>
+                            </div>
                         </div>
-                        <strong class="clip-duration" id="clipDuration">0:00.00</strong>
-                    </div>
 
-                    <p class="control-note">開始・終了は選択中のクリップに適用されます。</p>
-
-                    <div class="time-grid">
-                        <label class="time-field">
-                            <span>開始</span>
-                            <div class="time-input-row">
-                                <input id="startInput" type="text" inputmode="decimal" value="0:00.00" autocomplete="off" spellcheck="false">
-                                <button id="setStartButton" type="button">現在位置</button>
+                        <div class="setting-grid">
+                            <label class="setting-field">
+                                <span>解像度</span>
+                                <select id="resolutionSelect">
+                                    <option value="source">元動画</option>
+                                    <option value="3840x2160">3840×2160 (4K)</option>
+                                    <option value="2560x1440">2560×1440</option>
+                                    <option value="1920x1080" selected>1920×1080</option>
+                                    <option value="1280x720">1280×720</option>
+                                    <option value="854x480">854×480</option>
+                                    <option value="custom">カスタム</option>
+                                </select>
+                            </label>
+                            <div class="custom-resolution" id="customResolution" hidden>
+                                <input id="exportWidthInput" type="number" min="16" max="7680" step="2" value="1920" aria-label="出力幅">
+                                <span>×</span>
+                                <input id="exportHeightInput" type="number" min="16" max="4320" step="2" value="1080" aria-label="出力高さ">
                             </div>
-                        </label>
-                        <label class="time-field">
-                            <span>終了</span>
-                            <div class="time-input-row">
-                                <input id="endInput" type="text" inputmode="decimal" value="0:00.00" autocomplete="off" spellcheck="false">
-                                <button id="setEndButton" type="button">現在位置</button>
-                            </div>
-                        </label>
-                    </div>
+                            <label class="setting-field">
+                                <span>FPS</span>
+                                <select id="fpsSelect">
+                                    <option value="24">24</option>
+                                    <option value="30" selected>30</option>
+                                    <option value="60">60</option>
+                                </select>
+                            </label>
+                        </div>
 
-                    <div class="preview-actions">
-                        <button id="previewButton" type="button">
-                            <iconify-icon icon="mdi:play"></iconify-icon>
-                            タイムライン再生
-                        </button>
-                        <button id="resetRangeButton" type="button">
-                            <iconify-icon icon="mdi:restore"></iconify-icon>
-                            編集をリセット
-                        </button>
-                    </div>
+                        <div class="snapshot-row">
+                            <select id="snapshotFormat" aria-label="静止画形式">
+                                <option value="png">PNG</option>
+                                <option value="jpeg">JPG / JPEG</option>
+                            </select>
+                            <button id="snapshotButton" type="button">
+                                <iconify-icon icon="mdi:camera-outline"></iconify-icon>
+                                現在のシーンを保存
+                            </button>
+                        </div>
+                    </section>
+
+                    <section class="inspector-section clip-settings" aria-labelledby="trimTitle">
+                        <div class="control-head">
+                            <div>
+                                <p class="eyebrow">CLIP</p>
+                                <h2 id="trimTitle">選択要素</h2>
+                            </div>
+                            <strong class="clip-duration" id="clipDuration">0:00.00</strong>
+                        </div>
+
+                        <p class="control-note" id="selectionNote">動画要素を選択してください。</p>
+
+                        <div class="video-clip-controls" id="videoClipControls">
+                            <div class="time-grid">
+                                <label class="time-field">
+                                    <span>開始</span>
+                                    <div class="time-input-row">
+                                        <input id="startInput" type="text" inputmode="decimal" value="0:00.00" autocomplete="off" spellcheck="false">
+                                        <button id="setStartButton" type="button">現在位置</button>
+                                    </div>
+                                </label>
+                                <label class="time-field">
+                                    <span>終了</span>
+                                    <div class="time-input-row">
+                                        <input id="endInput" type="text" inputmode="decimal" value="0:00.00" autocomplete="off" spellcheck="false">
+                                        <button id="setEndButton" type="button">現在位置</button>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="clip-option-grid">
+                                <label class="setting-field">
+                                    <span>速度</span>
+                                    <select id="speedSelect">
+                                        <option value="0.25">0.25×</option>
+                                        <option value="0.5">0.5×</option>
+                                        <option value="0.75">0.75×</option>
+                                        <option value="1" selected>1×</option>
+                                        <option value="1.25">1.25×</option>
+                                        <option value="1.5">1.5×</option>
+                                        <option value="2">2×</option>
+                                        <option value="3">3×</option>
+                                        <option value="4">4×</option>
+                                    </select>
+                                </label>
+                                <label class="setting-field">
+                                    <span>フィルター</span>
+                                    <select id="filterSelect">
+                                        <option value="none">なし</option>
+                                        <option value="grayscale">モノクロ</option>
+                                        <option value="sepia">セピア</option>
+                                        <option value="vivid">鮮やか</option>
+                                        <option value="contrast">高コントラスト</option>
+                                        <option value="blur">ぼかし</option>
+                                        <option value="mosaic">モザイク</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <label class="filter-strength" id="filterStrengthRow">
+                                <span>強度</span>
+                                <input id="filterStrength" type="range" min="0" max="100" value="50">
+                                <output id="filterStrengthOutput">50%</output>
+                            </label>
+
+                            <button id="separateAudioButton" class="wide-action" type="button">
+                                <iconify-icon icon="mdi:music-note-plus"></iconify-icon>
+                                動画と音声を分離
+                            </button>
+                        </div>
+
+                        <div class="preview-actions">
+                            <button id="previewButton" type="button">
+                                <iconify-icon icon="mdi:play"></iconify-icon>
+                                タイムライン再生
+                            </button>
+                            <button id="resetRangeButton" type="button">
+                                <iconify-icon icon="mdi:restore"></iconify-icon>
+                                編集をリセット
+                            </button>
+                        </div>
+                    </section>
 
                     <section class="export-status" aria-label="書き出し状態">
                         <span class="format-badge" id="formatBadge" hidden>MP4</span>
@@ -116,11 +215,19 @@
                 <section class="panel timeline-pane" id="timelinePane" aria-label="編集タイムライン">
                     <div class="timeline-toolbar">
                         <div class="timeline-toolbar-left">
-                            <button class="timeline-tool-button" id="cutButton" type="button" title="再生ヘッドでカット (Ctrl+← / Ctrl+クリック)">
+                            <button class="timeline-tool-button" id="cutButton" type="button" title="再生ヘッドでカット">
                                 <iconify-icon icon="mdi:content-cut"></iconify-icon>
                                 <span>カット</span>
                             </button>
-                            <span class="shortcut-hint">Ctrl+← カット · Ctrl+Z Undo · Ctrl+Y Redo · Del 削除 · Space 再生/停止</span>
+                            <button class="timeline-tool-button" id="addImageButton" type="button">
+                                <iconify-icon icon="mdi:image-plus"></iconify-icon>
+                                <span>画像</span>
+                            </button>
+                            <button class="timeline-tool-button" id="addAudioButton" type="button">
+                                <iconify-icon icon="mdi:music-note-plus"></iconify-icon>
+                                <span>音声</span>
+                            </button>
+                            <span class="shortcut-hint">Ctrl+← カット · Ctrl+Z/Y · Del · Space</span>
                         </div>
                         <div class="timeline-toolbar-right">
                             <span id="clipCountLabel">1 clip</span>
@@ -131,11 +238,27 @@
                     <div class="timeline-ruler" id="timelineRuler" aria-hidden="true"></div>
 
                     <div class="timeline-workspace" id="timelineWorkspace">
-                        <div class="track-label">
-                            <iconify-icon icon="mdi:movie-open-outline"></iconify-icon>
-                            <span>Video</span>
+                        <div class="track-row video-track-row">
+                            <div class="track-label">
+                                <iconify-icon icon="mdi:movie-open-outline"></iconify-icon>
+                                <span>Video</span>
+                            </div>
+                            <div class="clip-track" id="clipTrack"></div>
                         </div>
-                        <div class="clip-track" id="clipTrack"></div>
+                        <div class="track-row image-track-row">
+                            <div class="track-label">
+                                <iconify-icon icon="mdi:image-outline"></iconify-icon>
+                                <span>Image</span>
+                            </div>
+                            <div class="asset-track image-track" id="imageTrack"></div>
+                        </div>
+                        <div class="track-row audio-track-row">
+                            <div class="track-label">
+                                <iconify-icon icon="mdi:waveform"></iconify-icon>
+                                <span>Audio</span>
+                            </div>
+                            <div class="asset-track audio-track" id="audioTrack"></div>
+                        </div>
 
                         <button class="timeline-playhead" id="playhead" type="button" aria-label="再生位置をドラッグ" title="ドラッグして再生位置を移動">
                             <span class="playhead-handle"></span>
@@ -146,6 +269,9 @@
             </section>
         </main>
     </div>
+
+    <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.webm" hidden>
 
     <noscript>
         <p class="noscript-notice">JavaScriptを有効にしてください。</p>
