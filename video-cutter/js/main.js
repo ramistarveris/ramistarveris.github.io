@@ -10,18 +10,39 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const HISTORY_LIMIT = 100;
 
     const fileInput = document.getElementById('fileInput');
+    const imageInput = document.getElementById('imageInput');
+    const audioInput = document.getElementById('audioInput');
     const dropZone = document.getElementById('dropZone');
     const uploadPanel = document.getElementById('uploadPanel');
     const editor = document.getElementById('editor');
+
     const video = document.getElementById('video');
+    const videoFrame = document.getElementById('videoFrame');
+    const effectCanvas = document.getElementById('effectCanvas');
+    const imageOverlayStage = document.getElementById('imageOverlayStage');
     const fileName = document.getElementById('fileName');
     const fileMeta = document.getElementById('fileMeta');
     const replaceButton = document.getElementById('replaceButton');
 
+    const resolutionSelect = document.getElementById('resolutionSelect');
+    const customResolution = document.getElementById('customResolution');
+    const exportWidthInput = document.getElementById('exportWidthInput');
+    const exportHeightInput = document.getElementById('exportHeightInput');
+    const fpsSelect = document.getElementById('fpsSelect');
+    const snapshotFormat = document.getElementById('snapshotFormat');
+    const snapshotButton = document.getElementById('snapshotButton');
+
+    const selectionNote = document.getElementById('selectionNote');
+    const videoClipControls = document.getElementById('videoClipControls');
     const startInput = document.getElementById('startInput');
     const endInput = document.getElementById('endInput');
     const setStartButton = document.getElementById('setStartButton');
     const setEndButton = document.getElementById('setEndButton');
+    const speedSelect = document.getElementById('speedSelect');
+    const filterSelect = document.getElementById('filterSelect');
+    const filterStrength = document.getElementById('filterStrength');
+    const filterStrengthOutput = document.getElementById('filterStrengthOutput');
+    const separateAudioButton = document.getElementById('separateAudioButton');
     const resetRangeButton = document.getElementById('resetRangeButton');
     const previewButton = document.getElementById('previewButton');
     const clipDurationLabel = document.getElementById('clipDuration');
@@ -30,10 +51,14 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const timelineRuler = document.getElementById('timelineRuler');
     const timelineWorkspace = document.getElementById('timelineWorkspace');
     const clipTrack = document.getElementById('clipTrack');
+    const imageTrack = document.getElementById('imageTrack');
+    const audioTrack = document.getElementById('audioTrack');
     const playhead = document.getElementById('playhead');
     const playheadTimeLabel = document.getElementById('playheadTimeLabel');
     const clipCountLabel = document.getElementById('clipCountLabel');
     const cutButton = document.getElementById('cutButton');
+    const addImageButton = document.getElementById('addImageButton');
+    const addAudioButton = document.getElementById('addAudioButton');
 
     const formatBadge = document.getElementById('formatBadge');
     const exportButton = document.getElementById('exportButton');
@@ -47,21 +72,41 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     let currentFile = null;
     let objectUrl = null;
     let sourceDuration = 0;
+    let sourceWidth = 1920;
+    let sourceHeight = 1080;
+
     let clips = [];
+    let imageClips = [];
+    let audioClips = [];
     let clipIdCounter = 1;
-    let selectedClipId = null;
+    let assetIdCounter = 1;
+
+    let selectedType = 'video';
+    let selectedId = null;
     let activeClipId = null;
     let logicalTime = 0;
+
     let playingTimeline = false;
     let internalSeek = false;
     let draggingPlayhead = false;
     let draggedClipId = null;
+    let transitioningClip = false;
+    let playbackFrameCallbackId = null;
+
     let exportJob = null;
     let cancelledByUser = false;
+
     let undoStack = [];
     let redoStack = [];
-    let playbackFrameCallbackId = null;
-    let transitioningClip = false;
+
+    let sourceAudioBuffer = null;
+    let sourceAudioDecodePromise = null;
+    let decodeAudioContext = null;
+    let previewAudioContext = null;
+    let previewAudioNodes = [];
+
+    const assetObjectUrls = new Set();
+    let mosaicBufferCanvas = null;
 
     function formatTime(seconds) {
         const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -76,19 +121,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const text = String(value).trim();
         if (!text) return NaN;
 
-        if (/^\d+(?:\.\d+)?$/.test(text)) {
-            return Number(text);
-        }
+        if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text);
 
         const parts = text.split(':').map((part) => part.trim());
-        if (parts.length < 2 || parts.length > 3 || parts.some((part) => part === '' || Number.isNaN(Number(part)))) {
+        if (
+            parts.length < 2
+            || parts.length > 3
+            || parts.some((part) => part === '' || Number.isNaN(Number(part)))
+        ) {
             return NaN;
         }
 
-        if (parts.length === 2) {
-            return Number(parts[0]) * 60 + Number(parts[1]);
-        }
-
+        if (parts.length === 2) return Number(parts[0]) * 60 + Number(parts[1]);
         return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
     }
 
@@ -104,95 +148,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return Math.min(Math.max(value, min), max);
     }
 
-    function createClip(sourceStart, sourceEnd, muted = false) {
+    function createVideoClip(sourceStart, sourceEnd, options = {}) {
         return {
             id: `clip-${clipIdCounter++}`,
+            type: 'video',
             sourceStart,
             sourceEnd,
-            muted,
+            muted: Boolean(options.muted),
+            audioDetached: Boolean(options.audioDetached),
+            speed: Number(options.speed) || 1,
+            filter: options.filter || 'none',
+            filterStrength: Number.isFinite(options.filterStrength) ? options.filterStrength : 50,
         };
     }
 
-    function captureEditorState() {
-        return {
-            clips: clips.map((clip) => ({ ...clip })),
-            clipIdCounter,
-            selectedClipId,
-            activeClipId,
-            logicalTime,
-        };
-    }
-
-    function pushUndoState() {
-        if (exportJob) return;
-        undoStack.push(captureEditorState());
-        if (undoStack.length > HISTORY_LIMIT) {
-            undoStack.shift();
-        }
-        redoStack = [];
-    }
-
-    function restoreEditorState(state) {
-        if (!state) return;
-
-        video.pause();
-        playingTimeline = false;
-        setPreviewButtonState(false);
-
-        clips = state.clips.map((clip) => ({ ...clip }));
-        clipIdCounter = state.clipIdCounter;
-        logicalTime = clamp(state.logicalTime, 0, getTimelineDuration());
-
-        selectedClipId = clips.some((clip) => clip.id === state.selectedClipId)
-            ? state.selectedClipId
-            : clips[0]?.id ?? null;
-        activeClipId = clips.some((clip) => clip.id === state.activeClipId)
-            ? state.activeClipId
-            : selectedClipId;
-
-        setStatus('');
-        renderTimeline();
-
-        if (!clips.length) {
-            selectedClipId = null;
-            activeClipId = null;
-            logicalTime = 0;
-            video.muted = false;
-            exportButton.disabled = true;
-            updateControlPanel();
-            updatePlayheadVisual();
-            return;
-        }
-
-        const span = getSpanByClipId(activeClipId)
-            || findSpanAtTimelineTime(logicalTime)
-            || getTimelineSpans()[0];
-
-        activeClipId = span.clip.id;
-        video.muted = span.clip.muted;
-
-        const offset = clamp(logicalTime - span.start, 0, getClipDuration(span.clip));
-        const sourceTime = span.clip.sourceStart + offset;
-        seekVideoTo(sourceTime);
-        updatePlayheadVisual();
-    }
-
-    function undoEdit() {
-        if (exportJob || !undoStack.length) return;
-        redoStack.push(captureEditorState());
-        const state = undoStack.pop();
-        restoreEditorState(state);
-    }
-
-    function redoEdit() {
-        if (exportJob || !redoStack.length) return;
-        undoStack.push(captureEditorState());
-        const state = redoStack.pop();
-        restoreEditorState(state);
+    function createAssetId(prefix) {
+        return `${prefix}-${assetIdCounter++}`;
     }
 
     function getClipDuration(clip) {
-        return Math.max(0, clip.sourceEnd - clip.sourceStart);
+        return Math.max(0, clip.sourceEnd - clip.sourceStart) / Math.max(0.01, clip.speed || 1);
     }
 
     function getTimelineDuration() {
@@ -217,15 +192,111 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!spans.length) return null;
 
         const total = spans[spans.length - 1].end;
-        if (time >= total - EPSILON) {
-            return spans[spans.length - 1];
-        }
+        if (time >= total - EPSILON) return spans[spans.length - 1];
 
-        return spans.find((span) => time >= span.start - EPSILON && time < span.end - EPSILON) || spans[0];
+        return (
+            spans.find((span) => time >= span.start - EPSILON && time < span.end - EPSILON)
+            || spans[0]
+        );
     }
 
-    function getSelectedClip() {
-        return clips.find((clip) => clip.id === selectedClipId) || null;
+    function getSelectedVideoClip() {
+        if (selectedType !== 'video') return null;
+        return clips.find((clip) => clip.id === selectedId) || null;
+    }
+
+    function getSelectedImageClip() {
+        if (selectedType !== 'image') return null;
+        return imageClips.find((clip) => clip.id === selectedId) || null;
+    }
+
+    function getSelectedAudioClip() {
+        if (selectedType !== 'audio') return null;
+        return audioClips.find((clip) => clip.id === selectedId) || null;
+    }
+
+    function captureEditorState() {
+        return {
+            clips: clips.map((clip) => ({ ...clip })),
+            imageClips: imageClips.map((clip) => ({ ...clip })),
+            audioClips: audioClips.map((clip) => ({ ...clip })),
+            clipIdCounter,
+            assetIdCounter,
+            selectedType,
+            selectedId,
+            activeClipId,
+            logicalTime,
+        };
+    }
+
+    function pushUndoState() {
+        if (exportJob) return;
+        undoStack.push(captureEditorState());
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack = [];
+    }
+
+    function restoreEditorState(state) {
+        if (!state) return;
+
+        pauseTimelinePlayback();
+
+        clips = state.clips.map((clip) => ({ ...clip }));
+        imageClips = state.imageClips.map((clip) => ({ ...clip }));
+        audioClips = state.audioClips.map((clip) => ({ ...clip }));
+        clipIdCounter = state.clipIdCounter;
+        assetIdCounter = state.assetIdCounter;
+        selectedType = state.selectedType;
+        selectedId = state.selectedId;
+        activeClipId = state.activeClipId;
+        logicalTime = clamp(state.logicalTime, 0, getTimelineDuration());
+
+        if (!clips.length) {
+            selectedType = null;
+            selectedId = null;
+            activeClipId = null;
+            logicalTime = 0;
+            video.muted = true;
+            renderTimeline();
+            updateInspector();
+            updatePreviewScene();
+            return;
+        }
+
+        if (
+            selectedType === 'video'
+            && !clips.some((clip) => clip.id === selectedId)
+        ) {
+            selectedId = clips[0].id;
+        }
+
+        const span = (
+            getSpanByClipId(activeClipId)
+            || findSpanAtTimelineTime(logicalTime)
+            || getTimelineSpans()[0]
+        );
+
+        activeClipId = span.clip.id;
+        applyActiveVideoClip(span.clip);
+
+        const offset = clamp(logicalTime - span.start, 0, getClipDuration(span.clip));
+        seekVideoTo(span.clip.sourceStart + offset * span.clip.speed);
+
+        renderTimeline();
+        updateInspector();
+        updatePreviewScene();
+    }
+
+    function undoEdit() {
+        if (exportJob || !undoStack.length) return;
+        redoStack.push(captureEditorState());
+        restoreEditorState(undoStack.pop());
+    }
+
+    function redoEdit() {
+        if (exportJob || !redoStack.length) return;
+        undoStack.push(captureEditorState());
+        restoreEditorState(redoStack.pop());
     }
 
     function setStatus(message, type = '') {
@@ -245,30 +316,85 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         progressPercent.textContent = '0%';
         progressLabel.textContent = '準備中…';
         cancelButton.hidden = true;
-        exportButton.disabled = !currentFile || !sourceDuration || !clips.length;
+        exportButton.disabled = !currentFile || !clips.length;
         replaceButton.disabled = false;
         setStatus('');
     }
 
-    function updateControlPanel() {
-        const clip = getSelectedClip();
-        const disabled = !clip;
+    function getFilterCss(clip) {
+        if (!clip || clip.filter === 'none' || clip.filter === 'mosaic') return 'none';
 
-        startInput.disabled = disabled;
-        endInput.disabled = disabled;
-        setStartButton.disabled = disabled;
-        setEndButton.disabled = disabled;
+        const amount = clamp((clip.filterStrength || 0) / 100, 0, 1);
 
-        if (!clip) {
-            startInput.value = '--';
-            endInput.value = '--';
-            clipDurationLabel.textContent = '--';
+        switch (clip.filter) {
+            case 'grayscale':
+                return `grayscale(${amount})`;
+            case 'sepia':
+                return `sepia(${amount})`;
+            case 'vivid':
+                return `saturate(${1 + amount * 2.2}) contrast(${1 + amount * .25})`;
+            case 'contrast':
+                return `contrast(${1 + amount * 1.4})`;
+            case 'blur':
+                return `blur(${(amount * 8).toFixed(2)}px)`;
+            default:
+                return 'none';
+        }
+    }
+
+    function applyActiveVideoClip(clip) {
+        if (!clip) return;
+        video.playbackRate = clamp(clip.speed || 1, 0.25, 4);
+        video.muted = Boolean(clip.muted || clip.audioDetached);
+        video.style.filter = getFilterCss(clip);
+    }
+
+    function updateInspector() {
+        const videoClip = getSelectedVideoClip();
+        const imageClip = getSelectedImageClip();
+        const audioClip = getSelectedAudioClip();
+
+        videoClipControls.hidden = !videoClip;
+        startInput.disabled = !videoClip;
+        endInput.disabled = !videoClip;
+        setStartButton.disabled = !videoClip;
+        setEndButton.disabled = !videoClip;
+        speedSelect.disabled = !videoClip;
+        filterSelect.disabled = !videoClip;
+        filterStrength.disabled = !videoClip;
+        separateAudioButton.disabled = !videoClip;
+
+        if (videoClip) {
+            selectionNote.textContent = '動画要素: 速度・フィルター・音声分離を設定できます。';
+            startInput.value = formatTime(videoClip.sourceStart);
+            endInput.value = formatTime(videoClip.sourceEnd);
+            speedSelect.value = String(videoClip.speed);
+            filterSelect.value = videoClip.filter;
+            filterStrength.value = String(videoClip.filterStrength);
+            filterStrengthOutput.value = `${videoClip.filterStrength}%`;
+            filterStrengthOutput.textContent = `${videoClip.filterStrength}%`;
+            clipDurationLabel.textContent = formatTime(getClipDuration(videoClip));
+            separateAudioButton.disabled = videoClip.audioDetached;
+            separateAudioButton.innerHTML = videoClip.audioDetached
+                ? '<iconify-icon icon="mdi:check"></iconify-icon>音声分離済み'
+                : '<iconify-icon icon="mdi:music-note-plus"></iconify-icon>動画と音声を分離';
             return;
         }
 
-        startInput.value = formatTime(clip.sourceStart);
-        endInput.value = formatTime(clip.sourceEnd);
-        clipDurationLabel.textContent = formatTime(getClipDuration(clip));
+        if (imageClip) {
+            selectionNote.textContent = `画像要素: ${imageClip.name} · ${formatTime(imageClip.duration)}`;
+            clipDurationLabel.textContent = formatTime(imageClip.duration);
+            return;
+        }
+
+        if (audioClip) {
+            selectionNote.textContent = `音声要素: ${audioClip.name} · ${formatTime(audioClip.duration)}`;
+            clipDurationLabel.textContent = formatTime(audioClip.duration);
+            return;
+        }
+
+        selectionNote.textContent = 'タイムラインの要素を選択してください。';
+        clipDurationLabel.textContent = '--';
     }
 
     function renderRuler() {
@@ -287,8 +413,57 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
     }
 
-    function renderTimeline() {
-        const total = getTimelineDuration();
+    function buildWaveformPoints(buffer, sourceStart = 0, sourceEnd = buffer?.duration || 0) {
+        if (!buffer || sourceEnd <= sourceStart) return '';
+
+        const points = 80;
+        const channel = buffer.getChannelData(0);
+        const sampleRate = buffer.sampleRate;
+        const start = clamp(Math.floor(sourceStart * sampleRate), 0, channel.length);
+        const end = clamp(Math.floor(sourceEnd * sampleRate), start + 1, channel.length);
+        const length = Math.max(1, end - start);
+        const step = Math.max(1, Math.floor(length / points));
+        const values = [];
+
+        for (let i = 0; i < points; i++) {
+            const from = start + i * step;
+            const to = Math.min(end, from + step);
+            let peak = 0;
+
+            for (let j = from; j < to; j += Math.max(1, Math.floor(step / 16))) {
+                peak = Math.max(peak, Math.abs(channel[j] || 0));
+            }
+
+            values.push(peak);
+        }
+
+        const top = values.map((value, index) => (
+            `${(index / (points - 1) * 100).toFixed(2)},${(20 - value * 18).toFixed(2)}`
+        ));
+        const bottom = values.slice().reverse().map((value, reverseIndex) => {
+            const index = points - 1 - reverseIndex;
+            return `${(index / (points - 1) * 100).toFixed(2)},${(20 + value * 18).toFixed(2)}`;
+        });
+
+        return [...top, ...bottom].join(' ');
+    }
+
+    function createDeleteButton(className, label, handler) {
+        const button = document.createElement('button');
+        button.className = className;
+        button.type = 'button';
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = '<iconify-icon icon="mdi:trash-can-outline"></iconify-icon>';
+        button.addEventListener('pointerdown', (event) => event.stopPropagation());
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            handler();
+        });
+        return button;
+    }
+
+    function renderVideoTrack() {
         clipTrack.replaceChildren();
 
         clips.forEach((clip, index) => {
@@ -299,37 +474,41 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             clipElement.style.flexGrow = String(Math.max(getClipDuration(clip), MIN_CLIP_SECONDS));
             clipElement.style.flexBasis = '0';
 
-            if (clip.id === selectedClipId) {
+            if (selectedType === 'video' && selectedId === clip.id) {
                 clipElement.classList.add('is-selected');
             }
-            if (clip.muted) {
+            if (clip.muted || clip.audioDetached) {
                 clipElement.classList.add('is-muted');
             }
 
             const audioButton = document.createElement('button');
             audioButton.className = 'clip-audio-button';
             audioButton.type = 'button';
-            audioButton.title = clip.muted ? '音声をオン' : '音声をミュート';
+            const audioOff = clip.muted || clip.audioDetached;
+            audioButton.title = audioOff ? '音声をオン' : '音声をミュート';
             audioButton.setAttribute('aria-label', audioButton.title);
-            audioButton.innerHTML = `<iconify-icon icon="${clip.muted ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
+            audioButton.innerHTML = `<iconify-icon icon="${audioOff ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
+            if (clip.audioDetached) {
+                audioButton.disabled = true;
+                audioButton.title = '音声は分離されています';
+            }
 
             const body = document.createElement('div');
             body.className = 'clip-body';
 
             const name = document.createElement('span');
             name.className = 'clip-name';
-            name.textContent = `Clip ${index + 1}`;
+            name.textContent = `Clip ${index + 1} · ${clip.speed}×`;
 
             const time = document.createElement('span');
             time.className = 'clip-time';
             time.textContent = `${formatTime(clip.sourceStart)} – ${formatTime(clip.sourceEnd)}`;
 
-            const deleteButton = document.createElement('button');
-            deleteButton.className = 'clip-delete-button';
-            deleteButton.type = 'button';
-            deleteButton.title = 'クリップを削除';
-            deleteButton.setAttribute('aria-label', deleteButton.title);
-            deleteButton.innerHTML = '<iconify-icon icon="mdi:trash-can-outline"></iconify-icon>';
+            const deleteButton = createDeleteButton(
+                'clip-delete-button',
+                'クリップを削除',
+                () => deleteElement('video', clip.id),
+            );
 
             body.append(name, time);
             clipElement.append(audioButton, body, deleteButton);
@@ -341,15 +520,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 toggleClipMute(clip.id);
             });
 
-            deleteButton.addEventListener('pointerdown', (event) => event.stopPropagation());
-            deleteButton.addEventListener('dragstart', (event) => event.preventDefault());
-            deleteButton.addEventListener('click', (event) => {
-                event.stopPropagation();
-                deleteClip(clip.id);
-            });
-
             clipElement.addEventListener('click', () => {
-                selectClip(clip.id, false);
+                selectElement('video', clip.id);
             });
 
             clipElement.addEventListener('dragstart', (event) => {
@@ -370,6 +542,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 clearDropIndicators();
+
                 const rect = clipElement.getBoundingClientRect();
                 const before = event.clientX < rect.left + rect.width / 2;
                 showDropIndicator(clipElement, before);
@@ -378,6 +551,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             clipElement.addEventListener('drop', (event) => {
                 if (!draggedClipId || draggedClipId === clip.id) return;
                 event.preventDefault();
+
                 const rect = clipElement.getBoundingClientRect();
                 const before = event.clientX < rect.left + rect.width / 2;
                 clearDropIndicators();
@@ -386,12 +560,141 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
             clipTrack.appendChild(clipElement);
         });
+    }
 
-        clipCountLabel.textContent = `${clips.length} clip${clips.length === 1 ? '' : 's'} · ${formatTime(total)}`;
+    function renderAssetTrack(track, assets, type) {
+        track.replaceChildren();
+        const total = getTimelineDuration();
+        if (!total) return;
+
+        assets.forEach((asset) => {
+            const element = document.createElement('article');
+            element.className = `asset-clip ${type}-clip`;
+            element.dataset.assetId = asset.id;
+            element.style.left = `${clamp(asset.start / total * 100, 0, 100)}%`;
+            element.style.width = `${clamp(asset.duration / total * 100, .5, 100)}%`;
+
+            if (selectedType === type && selectedId === asset.id) {
+                element.classList.add('is-selected');
+            }
+
+            if (type === 'image') {
+                const img = document.createElement('img');
+                img.className = 'asset-thumb';
+                img.src = asset.url;
+                img.alt = '';
+                element.appendChild(img);
+            } else {
+                const muteButton = document.createElement('button');
+                muteButton.className = 'asset-mute';
+                muteButton.type = 'button';
+                muteButton.title = asset.muted ? '音声をオン' : '音声をミュート';
+                muteButton.innerHTML = `<iconify-icon icon="${asset.muted ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
+                muteButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+                muteButton.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    pushUndoState();
+                    asset.muted = !asset.muted;
+                    renderTimeline();
+                    restartLayerAudioIfPlaying();
+                });
+                element.appendChild(muteButton);
+
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.classList.add('waveform');
+                svg.setAttribute('viewBox', '0 0 100 40');
+                svg.setAttribute('preserveAspectRatio', 'none');
+
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute(
+                    'points',
+                    buildWaveformPoints(asset.buffer, asset.sourceStart, asset.sourceEnd),
+                );
+                svg.appendChild(polyline);
+                element.appendChild(svg);
+            }
+
+            const name = document.createElement('span');
+            name.className = 'asset-name';
+            name.textContent = asset.name;
+            element.appendChild(name);
+
+            element.appendChild(createDeleteButton(
+                'asset-delete',
+                '要素を削除',
+                () => deleteElement(type, asset.id),
+            ));
+
+            element.addEventListener('pointerdown', (event) => {
+                if (event.button !== 0 || event.target.closest('button')) return;
+                selectElement(type, asset.id);
+                beginAssetDrag(event, asset, element);
+            });
+
+            track.appendChild(element);
+        });
+    }
+
+    function renderTimeline() {
+        const total = getTimelineDuration();
+        renderVideoTrack();
+        renderAssetTrack(imageTrack, imageClips, 'image');
+        renderAssetTrack(audioTrack, audioClips, 'audio');
+
+        clipCountLabel.textContent = (
+            `${clips.length} video · ${imageClips.length} image · ${audioClips.length} audio · ${formatTime(total)}`
+        );
         exportButton.disabled = Boolean(exportJob) || !currentFile || !clips.length;
         renderRuler();
-        updateControlPanel();
+        updateInspector();
         updatePlayheadVisual();
+        updatePreviewScene();
+    }
+
+    function beginAssetDrag(event, asset, element) {
+        const track = asset.type === 'image' ? imageTrack : audioTrack;
+        const rect = track.getBoundingClientRect();
+        const total = getTimelineDuration();
+        if (!rect.width || !total) return;
+
+        const pointerId = event.pointerId;
+        const startX = event.clientX;
+        const originalStart = asset.start;
+        let changed = false;
+        let historyPushed = false;
+
+        element.setPointerCapture(pointerId);
+
+        const move = (moveEvent) => {
+            const dx = moveEvent.clientX - startX;
+            if (Math.abs(dx) < 2 && !changed) return;
+
+            if (!historyPushed) {
+                pushUndoState();
+                historyPushed = true;
+            }
+
+            changed = true;
+            const delta = dx / rect.width * total;
+            asset.start = clamp(originalStart + delta, 0, Math.max(0, total - asset.duration));
+            element.style.left = `${asset.start / total * 100}%`;
+            updatePreviewScene();
+        };
+
+        const finish = () => {
+            element.removeEventListener('pointermove', move);
+            element.removeEventListener('pointerup', finish);
+            element.removeEventListener('pointercancel', finish);
+
+            if (changed) {
+                renderTimeline();
+                restartLayerAudioIfPlaying();
+            }
+        };
+
+        element.addEventListener('pointermove', move);
+        element.addEventListener('pointerup', finish);
+        element.addEventListener('pointercancel', finish);
     }
 
     function showDropIndicator(targetElement, before) {
@@ -411,9 +714,6 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     function clearDropIndicators() {
         clipTrack.classList.remove('is-reorder-target');
         clipTrack.style.removeProperty('--drop-indicator-x');
-        clipTrack.querySelectorAll('.is-drop-before, .is-drop-after').forEach((element) => {
-            element.classList.remove('is-drop-before', 'is-drop-after');
-        });
     }
 
     function capturePlayheadAnchor() {
@@ -441,14 +741,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
 
         const sourceTime = clamp(anchor.sourceTime, span.clip.sourceStart, span.clip.sourceEnd);
-        logicalTime = span.start + (sourceTime - span.clip.sourceStart);
+        logicalTime = span.start + (sourceTime - span.clip.sourceStart) / span.clip.speed;
         activeClipId = span.clip.id;
-        video.muted = span.clip.muted;
+        applyActiveVideoClip(span.clip);
 
-        if (seekVideo) {
-            seekVideoTo(sourceTime);
-        }
-
+        if (seekVideo) seekVideoTo(sourceTime);
         updatePlayheadVisual();
     }
 
@@ -458,8 +755,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (movingIndex < 0) return;
 
         pushUndoState();
+
         const [moving] = clips.splice(movingIndex, 1);
         let targetIndex = clips.findIndex((clip) => clip.id === targetId);
+
         if (targetIndex < 0) {
             clips.push(moving);
         } else {
@@ -467,77 +766,79 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             clips.splice(targetIndex, 0, moving);
         }
 
-        selectedClipId = moving.id;
+        selectedType = 'video';
+        selectedId = moving.id;
         renderTimeline();
         restorePlayheadAnchor(anchor, false);
+        restartLayerAudioIfPlaying();
     }
 
-    function selectClip(id, seekToStart = false) {
-        if (!clips.some((clip) => clip.id === id)) return;
-        selectedClipId = id;
+    function selectElement(type, id) {
+        selectedType = type;
+        selectedId = id;
 
-        clipTrack.querySelectorAll('.timeline-clip').forEach((element) => {
-            element.classList.toggle('is-selected', element.dataset.clipId === id);
-        });
-
-        updateControlPanel();
-
-        if (seekToStart) {
+        if (type === 'video') {
             const span = getSpanByClipId(id);
-            if (span) seekLogical(span.start, { snap: false });
+            if (span) activeClipId = id;
         }
+
+        renderTimeline();
     }
 
     function toggleClipMute(id) {
         const clip = clips.find((item) => item.id === id);
-        if (!clip) return;
+        if (!clip || clip.audioDetached) return;
 
         const anchor = capturePlayheadAnchor();
         pushUndoState();
         clip.muted = !clip.muted;
 
-        if (activeClipId === clip.id) {
-            video.muted = clip.muted;
-        }
+        if (activeClipId === clip.id) applyActiveVideoClip(clip);
 
         renderTimeline();
         restorePlayheadAnchor(anchor, false);
+        restartLayerAudioIfPlaying();
     }
 
-    function deleteClip(id = selectedClipId) {
+    function deleteElement(type = selectedType, id = selectedId) {
         if (exportJob || !id) return;
 
-        const index = clips.findIndex((clip) => clip.id === id);
-        if (index < 0) return;
-
         pushUndoState();
-        video.pause();
-        clips.splice(index, 1);
+        pauseTimelinePlayback();
 
-        if (!clips.length) {
-            selectedClipId = null;
-            activeClipId = null;
-            logicalTime = 0;
-            video.muted = false;
-            setStatus('');
-            renderTimeline();
-            updatePlayheadVisual();
-            return;
+        if (type === 'video') {
+            const index = clips.findIndex((clip) => clip.id === id);
+            if (index >= 0) clips.splice(index, 1);
+
+            if (!clips.length) {
+                selectedType = null;
+                selectedId = null;
+                activeClipId = null;
+                logicalTime = 0;
+                renderTimeline();
+                return;
+            }
+
+            const next = clips[Math.min(index, clips.length - 1)];
+            selectedType = 'video';
+            selectedId = next.id;
+            activeClipId = next.id;
+
+            const span = getSpanByClipId(next.id);
+            logicalTime = span?.start || 0;
+            applyActiveVideoClip(next);
+            seekVideoTo(next.sourceStart);
+        } else if (type === 'image') {
+            imageClips = imageClips.filter((asset) => asset.id !== id);
+            selectedType = 'video';
+            selectedId = activeClipId || clips[0]?.id || null;
+        } else if (type === 'audio') {
+            audioClips = audioClips.filter((asset) => asset.id !== id);
+            selectedType = 'video';
+            selectedId = activeClipId || clips[0]?.id || null;
         }
 
-        const nextClip = clips[Math.min(index, clips.length - 1)];
-        selectedClipId = nextClip.id;
-        activeClipId = nextClip.id;
-        setStatus('');
         renderTimeline();
-
-        const span = getSpanByClipId(nextClip.id);
-        if (span) {
-            logicalTime = span.start;
-            video.muted = nextClip.muted;
-            seekVideoTo(nextClip.sourceStart);
-            updatePlayheadVisual();
-        }
     }
 
     function updatePlayheadVisual() {
@@ -548,6 +849,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!total || !workspaceRect.width || !trackRect.width) {
             playhead.style.left = `${Math.max(0, trackRect.left - workspaceRect.left)}px`;
             playheadTimeLabel.textContent = '0:00.00';
+            updatePreviewScene();
             return;
         }
 
@@ -555,6 +857,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const left = trackRect.left - workspaceRect.left + ratio * trackRect.width;
         playhead.style.left = `${left}px`;
         playheadTimeLabel.textContent = formatTime(logicalTime);
+        updatePreviewScene();
     }
 
     function logicalTimeFromClientX(clientX) {
@@ -567,9 +870,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     function snapLogicalTime(time) {
         const total = getTimelineDuration();
         const rect = clipTrack.getBoundingClientRect();
-        if (!total || !rect.width) {
-            return { time: 0, snapped: false };
-        }
+
+        if (!total || !rect.width) return { time: 0, snapped: false };
 
         const threshold = total * SNAP_PIXELS / rect.width;
         const boundaries = [0, total];
@@ -582,17 +884,14 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         let distance = Infinity;
 
         boundaries.forEach((boundary) => {
-            const candidateDistance = Math.abs(time - boundary);
-            if (candidateDistance < distance) {
-                distance = candidateDistance;
+            const candidate = Math.abs(time - boundary);
+            if (candidate < distance) {
+                distance = candidate;
                 nearest = boundary;
             }
         });
 
-        if (distance <= threshold) {
-            return { time: nearest, snapped: true };
-        }
-
+        if (distance <= threshold) return { time: nearest, snapped: true };
         return { time, snapped: false };
     }
 
@@ -607,6 +906,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         const requested = clamp(time, 0, total);
         const snapped = snap ? snapLogicalTime(requested) : { time: requested, snapped: false };
+
         logicalTime = snapped.time;
         timelinePane.classList.toggle('is-snapping', snapped.snapped);
 
@@ -617,23 +917,23 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
 
         activeClipId = span.clip.id;
-        if (select) selectedClipId = span.clip.id;
-
-        const offset = clamp(logicalTime - span.start, 0, getClipDuration(span.clip));
-        const sourceTime = span.clip.sourceStart + offset;
-        video.muted = span.clip.muted;
-        seekVideoTo(sourceTime);
-
         if (select) {
-            selectClip(span.clip.id, false);
+            selectedType = 'video';
+            selectedId = span.clip.id;
         }
 
+        const offset = clamp(logicalTime - span.start, 0, getClipDuration(span.clip));
+        const sourceTime = span.clip.sourceStart + offset * span.clip.speed;
+
+        applyActiveVideoClip(span.clip);
+        seekVideoTo(sourceTime);
+
+        if (select) renderTimeline();
         updatePlayheadVisual();
     }
 
     function movePlayheadFromPointer(event, cutAfter = false) {
-        const raw = logicalTimeFromClientX(event.clientX);
-        seekLogical(raw, { snap: true, select: false });
+        seekLogical(logicalTimeFromClientX(event.clientX), { snap: true, select: false });
         if (cutAfter) splitAtPlayhead();
     }
 
@@ -642,7 +942,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (!span) return;
 
         const clip = span.clip;
-        const sourceCut = clip.sourceStart + (logicalTime - span.start);
+        const sourceCut = clip.sourceStart + (logicalTime - span.start) * clip.speed;
 
         if (
             sourceCut <= clip.sourceStart + MIN_CLIP_SECONDS
@@ -654,14 +954,22 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         const index = clips.findIndex((item) => item.id === clip.id);
         pushUndoState();
+
         const left = {
             ...clip,
             sourceEnd: sourceCut,
         };
-        const right = createClip(sourceCut, clip.sourceEnd, clip.muted);
+        const right = createVideoClip(sourceCut, clip.sourceEnd, {
+            muted: clip.muted,
+            audioDetached: clip.audioDetached,
+            speed: clip.speed,
+            filter: clip.filter,
+            filterStrength: clip.filterStrength,
+        });
 
         clips.splice(index, 1, left, right);
-        selectedClipId = right.id;
+        selectedType = 'video';
+        selectedId = right.id;
         activeClipId = right.id;
         setStatus('');
         renderTimeline();
@@ -669,17 +977,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const rightSpan = getSpanByClipId(right.id);
         if (rightSpan) {
             logicalTime = rightSpan.start;
-            video.muted = right.muted;
+            applyActiveVideoClip(right);
             seekVideoTo(right.sourceStart);
             updatePlayheadVisual();
         }
     }
 
     function applySelectedClipBoundary(kind, value) {
-        const clip = getSelectedClip();
+        const clip = getSelectedVideoClip();
         if (!clip || !Number.isFinite(value)) return;
 
         const anchor = capturePlayheadAnchor();
+
         const nextStart = kind === 'start'
             ? clamp(value, 0, clip.sourceEnd - MIN_CLIP_SECONDS)
             : clip.sourceStart;
@@ -691,7 +1000,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             Math.abs(nextStart - clip.sourceStart) <= EPSILON
             && Math.abs(nextEnd - clip.sourceEnd) <= EPSILON
         ) {
-            updateControlPanel();
+            updateInspector();
             return;
         }
 
@@ -709,18 +1018,23 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
     function resetClips(seek = true) {
         if (!sourceDuration) return;
+
         clipIdCounter = 1;
-        clips = [createClip(0, sourceDuration, false)];
-        selectedClipId = clips[0].id;
+        assetIdCounter = 1;
+        clips = [createVideoClip(0, sourceDuration)];
+        imageClips = [];
+        audioClips = [];
+        selectedType = 'video';
+        selectedId = clips[0].id;
         activeClipId = clips[0].id;
         logicalTime = 0;
-        video.muted = false;
+        sourceAudioBuffer = null;
+        sourceAudioDecodePromise = null;
+        applyActiveVideoClip(clips[0]);
         setStatus('');
         renderTimeline();
 
-        if (seek) {
-            seekVideoTo(0);
-        }
+        if (seek) seekVideoTo(0);
     }
 
     function syncLogicalFromVideo() {
@@ -728,7 +1042,12 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const span = clip ? getSpanByClipId(clip.id) : null;
         if (!clip || !span) return;
 
-        const relative = clamp(video.currentTime - clip.sourceStart, 0, getClipDuration(clip));
+        const relative = clamp(
+            (video.currentTime - clip.sourceStart) / Math.max(.01, clip.speed),
+            0,
+            getClipDuration(clip),
+        );
+
         logicalTime = span.start + relative;
         updatePlayheadVisual();
     }
@@ -740,6 +1059,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         ) {
             video.cancelVideoFrameCallback(playbackFrameCallbackId);
         }
+
         playbackFrameCallbackId = null;
     }
 
@@ -776,6 +1096,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             }
 
             syncLogicalFromVideo();
+            renderMosaicPreviewIfNeeded();
             schedulePlaybackFrameMonitor();
         });
     }
@@ -785,11 +1106,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const index = spans.findIndex((span) => span.clip.id === activeClipId);
 
         if (index < 0 || index >= spans.length - 1) {
-            playingTimeline = false;
+            pauseTimelinePlayback();
             logicalTime = getTimelineDuration();
-            cancelPlaybackFrameMonitor();
-            video.pause();
-            setPreviewButtonState(false);
             updatePlayheadVisual();
             return;
         }
@@ -802,14 +1120,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         );
 
         activeClipId = next.clip.id;
-        video.muted = next.clip.muted;
+        applyActiveVideoClip(next.clip);
 
         if (sourceIsContinuous) {
-            // A normal split of one source video is already continuous in the
-            // media element. Seeking back to the exact cut point causes a
-            // visible/audio hiccup, so only switch the logical clip here.
             const carriedOffset = clamp(
-                video.currentTime - next.clip.sourceStart,
+                (video.currentTime - next.clip.sourceStart) / Math.max(.01, next.clip.speed),
                 0,
                 getClipDuration(next.clip),
             );
@@ -826,8 +1141,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             try {
                 await video.play();
             } catch {
-                playingTimeline = false;
-                setPreviewButtonState(false);
+                pauseTimelinePlayback();
             }
         }
     }
@@ -844,17 +1158,28 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         playingTimeline = true;
         setPreviewButtonState(true);
+        await scheduleLayerAudioPlayback(logicalTime);
 
         try {
             await video.play();
         } catch {
-            playingTimeline = false;
-            setPreviewButtonState(false);
+            pauseTimelinePlayback();
         }
     }
 
+    function pauseTimelinePlayback() {
+        playingTimeline = false;
+        cancelPlaybackFrameMonitor();
+        stopPreviewLayerAudio();
+        if (!video.paused) video.pause();
+        setPreviewButtonState(false);
+    }
+
     async function loadFile(file) {
-        if (!file || (!file.type.startsWith('video/') && !/\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name))) {
+        if (
+            !file
+            || (!file.type.startsWith('video/') && !/\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name))
+        ) {
             return;
         }
 
@@ -862,13 +1187,19 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         currentFile = file;
         clips = [];
-        selectedClipId = null;
+        imageClips = [];
+        audioClips = [];
+        selectedType = null;
+        selectedId = null;
         activeClipId = null;
         logicalTime = 0;
         sourceDuration = 0;
+        sourceAudioBuffer = null;
+        sourceAudioDecodePromise = null;
         undoStack = [];
         redoStack = [];
         exportButton.disabled = true;
+
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         objectUrl = URL.createObjectURL(file);
 
@@ -879,6 +1210,460 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         uploadPanel.hidden = true;
         editor.hidden = false;
         resetExportUI();
+    }
+
+    function getDecodeAudioContext() {
+        if (!decodeAudioContext) {
+            decodeAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return decodeAudioContext;
+    }
+
+    async function ensureSourceAudioBuffer() {
+        if (sourceAudioBuffer) return sourceAudioBuffer;
+        if (sourceAudioDecodePromise) return sourceAudioDecodePromise;
+        if (!currentFile) return null;
+
+        sourceAudioDecodePromise = (async () => {
+            const {
+                Input,
+                ALL_FORMATS,
+                BlobSource,
+                AudioBufferSink,
+            } = Mediabunny;
+
+            const input = new Input({
+                formats: ALL_FORMATS,
+                source: new BlobSource(currentFile),
+            });
+
+            try {
+                const track = await input.getPrimaryAudioTrack();
+                if (!track || !await track.canDecode()) return null;
+
+                const sink = new AudioBufferSink(track);
+                const chunks = [];
+
+                for await (const wrapped of sink.buffers()) {
+                    chunks.push(wrapped);
+                }
+
+                if (!chunks.length) return null;
+
+                const sampleRate = chunks[0].buffer.sampleRate;
+                const channels = Math.max(...chunks.map((chunk) => chunk.buffer.numberOfChannels));
+                const maxEnd = Math.max(...chunks.map((chunk) => chunk.timestamp + chunk.duration));
+                const length = Math.max(1, Math.ceil(maxEnd * sampleRate));
+                const merged = new AudioBuffer({
+                    length,
+                    numberOfChannels: channels,
+                    sampleRate,
+                });
+
+                chunks.forEach((chunk) => {
+                    const offset = Math.max(0, Math.round(chunk.timestamp * sampleRate));
+
+                    for (let channel = 0; channel < channels; channel++) {
+                        const sourceChannel = chunk.buffer.getChannelData(
+                            Math.min(channel, chunk.buffer.numberOfChannels - 1),
+                        );
+                        const destination = merged.getChannelData(channel);
+                        destination.set(
+                            sourceChannel.subarray(0, Math.max(0, destination.length - offset)),
+                            offset,
+                        );
+                    }
+                });
+
+                sourceAudioBuffer = merged;
+                return merged;
+            } finally {
+                input.dispose();
+                sourceAudioDecodePromise = null;
+            }
+        })();
+
+        return sourceAudioDecodePromise;
+    }
+
+    async function addImageFile(file) {
+        if (!file || !file.type.startsWith('image/') || !getTimelineDuration()) return;
+
+        try {
+            const bitmap = await createImageBitmap(file);
+            const url = URL.createObjectURL(file);
+            assetObjectUrls.add(url);
+
+            const total = getTimelineDuration();
+            const start = clamp(logicalTime, 0, Math.max(0, total - .1));
+            const duration = Math.max(.1, Math.min(5, total - start));
+
+            pushUndoState();
+
+            const asset = {
+                id: createAssetId('image'),
+                type: 'image',
+                name: file.name,
+                url,
+                bitmap,
+                start,
+                duration,
+                opacity: 1,
+            };
+
+            imageClips.push(asset);
+            selectedType = 'image';
+            selectedId = asset.id;
+            renderTimeline();
+        } catch (error) {
+            console.error(error);
+            setStatus('画像を読み込めませんでした。', 'error');
+        }
+    }
+
+    async function decodeExternalAudio(file) {
+        const context = getDecodeAudioContext();
+        const arrayBuffer = await file.arrayBuffer();
+        return context.decodeAudioData(arrayBuffer.slice(0));
+    }
+
+    async function addAudioFile(file) {
+        if (!file || !getTimelineDuration()) return;
+
+        try {
+            const buffer = await decodeExternalAudio(file);
+            const total = getTimelineDuration();
+            const start = clamp(logicalTime, 0, Math.max(0, total - .1));
+            const duration = Math.max(.1, Math.min(buffer.duration, total - start));
+
+            pushUndoState();
+
+            const asset = {
+                id: createAssetId('audio'),
+                type: 'audio',
+                kind: 'external',
+                name: file.name,
+                buffer,
+                start,
+                duration,
+                sourceStart: 0,
+                sourceEnd: Math.min(buffer.duration, duration),
+                speed: 1,
+                muted: false,
+                volume: 1,
+            };
+
+            audioClips.push(asset);
+            selectedType = 'audio';
+            selectedId = asset.id;
+            renderTimeline();
+        } catch (error) {
+            console.error(error);
+            setStatus('音声を読み込めませんでした。', 'error');
+        }
+    }
+
+    async function separateSelectedAudio() {
+        const clip = getSelectedVideoClip();
+        if (!clip || clip.audioDetached) return;
+
+        separateAudioButton.disabled = true;
+        separateAudioButton.textContent = '音声を解析中…';
+
+        try {
+            const buffer = await ensureSourceAudioBuffer();
+            if (!buffer) {
+                setStatus('この動画には分離できる音声トラックがありません。', 'error');
+                updateInspector();
+                return;
+            }
+
+            const span = getSpanByClipId(clip.id);
+            if (!span) return;
+
+            pushUndoState();
+
+            clip.audioDetached = true;
+
+            const audioAsset = {
+                id: createAssetId('audio'),
+                type: 'audio',
+                kind: 'detached',
+                linkedVideoId: clip.id,
+                name: `${fileName.textContent || 'Video'} audio`,
+                buffer,
+                start: span.start,
+                duration: getClipDuration(clip),
+                sourceStart: clip.sourceStart,
+                sourceEnd: clip.sourceEnd,
+                speed: clip.speed,
+                muted: false,
+                volume: 1,
+            };
+
+            audioClips.push(audioAsset);
+            applyActiveVideoClip(clip);
+            selectedType = 'audio';
+            selectedId = audioAsset.id;
+            renderTimeline();
+            restartLayerAudioIfPlaying();
+        } catch (error) {
+            console.error(error);
+            setStatus('音声分離に失敗しました。', 'error');
+        } finally {
+            updateInspector();
+        }
+    }
+
+    function getPreviewAudioContext() {
+        if (!previewAudioContext) {
+            previewAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return previewAudioContext;
+    }
+
+    function stopPreviewLayerAudio() {
+        previewAudioNodes.forEach((node) => {
+            try { node.stop(); } catch {}
+            try { node.disconnect(); } catch {}
+        });
+        previewAudioNodes = [];
+    }
+
+    async function scheduleLayerAudioPlayback(fromTime) {
+        stopPreviewLayerAudio();
+        if (!audioClips.length) return;
+
+        const context = getPreviewAudioContext();
+        if (context.state === 'suspended') await context.resume();
+
+        const now = context.currentTime;
+
+        audioClips.forEach((asset) => {
+            if (asset.muted || !asset.buffer) return;
+
+            const assetEnd = asset.start + asset.duration;
+            if (assetEnd <= fromTime + EPSILON) return;
+
+            const source = context.createBufferSource();
+            source.buffer = asset.buffer;
+            source.playbackRate.value = asset.speed || 1;
+
+            const gain = context.createGain();
+            gain.gain.value = clamp(asset.volume ?? 1, 0, 2);
+
+            source.connect(gain);
+            gain.connect(context.destination);
+
+            const timelineOffset = Math.max(0, fromTime - asset.start);
+            const startDelay = Math.max(0, asset.start - fromTime);
+            const sourceOffset = asset.sourceStart + timelineOffset * (asset.speed || 1);
+            const sourceAvailable = Math.max(0, asset.sourceEnd - sourceOffset);
+
+            if (sourceAvailable <= EPSILON) return;
+
+            try {
+                source.start(now + startDelay, sourceOffset, sourceAvailable);
+                previewAudioNodes.push(source);
+            } catch (error) {
+                console.warn('Unable to schedule audio layer', error);
+            }
+        });
+    }
+
+    function restartLayerAudioIfPlaying() {
+        if (playingTimeline && !video.paused) {
+            scheduleLayerAudioPlayback(logicalTime);
+        }
+    }
+
+    function renderImageOverlays() {
+        imageOverlayStage.replaceChildren();
+
+        imageClips
+            .filter((asset) => (
+                logicalTime >= asset.start - EPSILON
+                && logicalTime < asset.start + asset.duration - EPSILON
+            ))
+            .forEach((asset) => {
+                const img = document.createElement('img');
+                img.className = 'scene-image';
+                img.src = asset.url;
+                img.alt = '';
+                img.style.opacity = String(asset.opacity ?? 1);
+                imageOverlayStage.appendChild(img);
+            });
+    }
+
+    function renderMosaicPreviewIfNeeded() {
+        const span = findSpanAtTimelineTime(logicalTime);
+        const clip = span?.clip;
+
+        if (!clip || clip.filter !== 'mosaic' || !video.videoWidth || !video.videoHeight) {
+            effectCanvas.hidden = true;
+            return;
+        }
+
+        const strength = clamp((clip.filterStrength || 50) / 100, 0, 1);
+        const blockSize = Math.max(3, Math.round(4 + strength * 38));
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        effectCanvas.width = width;
+        effectCanvas.height = height;
+
+        if (!mosaicBufferCanvas) mosaicBufferCanvas = document.createElement('canvas');
+
+        const smallWidth = Math.max(1, Math.round(width / blockSize));
+        const smallHeight = Math.max(1, Math.round(height / blockSize));
+
+        mosaicBufferCanvas.width = smallWidth;
+        mosaicBufferCanvas.height = smallHeight;
+
+        const smallCtx = mosaicBufferCanvas.getContext('2d');
+        const ctx = effectCanvas.getContext('2d');
+
+        smallCtx.clearRect(0, 0, smallWidth, smallHeight);
+        smallCtx.drawImage(video, 0, 0, smallWidth, smallHeight);
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(mosaicBufferCanvas, 0, 0, width, height);
+        ctx.imageSmoothingEnabled = true;
+        effectCanvas.hidden = false;
+    }
+
+    function updatePreviewScene() {
+        const span = findSpanAtTimelineTime(logicalTime);
+        const clip = span?.clip;
+
+        if (clip) applyActiveVideoClip(clip);
+        renderImageOverlays();
+        renderMosaicPreviewIfNeeded();
+    }
+
+    function getExportSize() {
+        if (resolutionSelect.value === 'source') {
+            return {
+                width: Math.max(16, sourceWidth),
+                height: Math.max(16, sourceHeight),
+            };
+        }
+
+        if (resolutionSelect.value === 'custom') {
+            return {
+                width: clamp(Math.round(Number(exportWidthInput.value) || 1920), 16, 7680),
+                height: clamp(Math.round(Number(exportHeightInput.value) || 1080), 16, 4320),
+            };
+        }
+
+        const [width, height] = resolutionSelect.value.split('x').map(Number);
+        return { width, height };
+    }
+
+    function drawContained(source, context, width, height) {
+        const sourceWidth = source.videoWidth || source.width || source.displayWidth || width;
+        const sourceHeight = source.videoHeight || source.height || source.displayHeight || height;
+        const scale = Math.min(width / sourceWidth, height / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        const x = (width - drawWidth) / 2;
+        const y = (height - drawHeight) / 2;
+
+        context.drawImage(source, x, y, drawWidth, drawHeight);
+    }
+
+    function drawMosaicSource(source, context, width, height, strength) {
+        const blockSize = Math.max(3, Math.round(4 + strength * 38));
+        const smallWidth = Math.max(1, Math.round(width / blockSize));
+        const smallHeight = Math.max(1, Math.round(height / blockSize));
+        const small = typeof OffscreenCanvas === 'function'
+            ? new OffscreenCanvas(smallWidth, smallHeight)
+            : document.createElement('canvas');
+
+        small.width = smallWidth;
+        small.height = smallHeight;
+        const smallContext = small.getContext('2d');
+
+        smallContext.fillStyle = '#000';
+        smallContext.fillRect(0, 0, smallWidth, smallHeight);
+        drawContained(source, smallContext, smallWidth, smallHeight);
+
+        context.imageSmoothingEnabled = false;
+        context.drawImage(small, 0, 0, width, height);
+        context.imageSmoothingEnabled = true;
+    }
+
+    function drawImageAssetsAt(context, time, width, height) {
+        imageClips
+            .filter((asset) => time >= asset.start && time < asset.start + asset.duration)
+            .forEach((asset) => {
+                const bitmap = asset.bitmap;
+                if (!bitmap) return;
+
+                const maxWidth = width * .38;
+                const maxHeight = height * .65;
+                const scale = Math.min(maxWidth / bitmap.width, maxHeight / bitmap.height);
+                const drawWidth = bitmap.width * scale;
+                const drawHeight = bitmap.height * scale;
+
+                context.globalAlpha = asset.opacity ?? 1;
+                context.drawImage(
+                    bitmap,
+                    (width - drawWidth) / 2,
+                    (height - drawHeight) / 2,
+                    drawWidth,
+                    drawHeight,
+                );
+                context.globalAlpha = 1;
+            });
+    }
+
+    async function saveSnapshot() {
+        if (!currentFile || !video.videoWidth) return;
+
+        const { width, height } = getExportSize();
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext('2d');
+        const span = findSpanAtTimelineTime(logicalTime);
+        const clip = span?.clip;
+
+        context.fillStyle = '#000';
+        context.fillRect(0, 0, width, height);
+
+        if (clip?.filter === 'mosaic') {
+            drawMosaicSource(
+                video,
+                context,
+                width,
+                height,
+                clamp((clip.filterStrength || 50) / 100, 0, 1),
+            );
+        } else {
+            context.filter = getFilterCss(clip);
+            drawContained(video, context, width, height);
+            context.filter = 'none';
+        }
+
+        drawImageAssetsAt(context, logicalTime, width, height);
+
+        const mimeType = snapshotFormat.value === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const extension = snapshotFormat.value === 'jpeg' ? 'jpg' : 'png';
+
+        canvas.toBlob((blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `scene-${formatTime(logicalTime).replace(/[:.]/g, '-') }.${extension}`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+        }, mimeType, .95);
     }
 
     async function chooseExportPreset(hasAudio) {
@@ -902,15 +1687,15 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             };
         }
 
-        const vp9 = await getFirstEncodableVideoCodec(['vp9', 'vp8']);
+        const vp = await getFirstEncodableVideoCodec(['vp9', 'vp8']);
         const opus = hasAudio ? await getFirstEncodableAudioCodec(['opus']) : 'opus';
 
-        if (vp9 && opus) {
+        if (vp && opus) {
             return {
                 format: new WebMOutputFormat(),
                 extension: 'webm',
                 mimeType: 'video/webm',
-                videoCodec: vp9,
+                videoCodec: vp,
                 audioCodec: hasAudio ? opus : null,
             };
         }
@@ -918,41 +1703,123 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         throw new Error('このブラウザで利用可能な動画エンコーダーが見つかりません。');
     }
 
-    function trimAudioSampleToRange(sample, start, end) {
-        const overlapStart = Math.max(sample.timestamp, start);
-        const overlapEnd = Math.min(sample.timestamp + sample.duration, end);
+    async function renderProjectAudio(totalDuration) {
+        const needsSourceAudio = clips.some((clip) => !clip.muted && !clip.audioDetached);
+        let originalAudio = null;
 
-        if (overlapEnd <= overlapStart + EPSILON) {
-            sample.close();
-            return null;
+        if (needsSourceAudio) originalAudio = await ensureSourceAudioBuffer();
+
+        const hasLayerAudio = audioClips.some((asset) => !asset.muted && asset.buffer);
+        if (!originalAudio && !hasLayerAudio) return null;
+
+        const sampleRate = 48000;
+        const length = Math.max(1, Math.ceil(totalDuration * sampleRate));
+        const context = new OfflineAudioContext(2, length, sampleRate);
+
+        const scheduleBuffer = ({
+            buffer,
+            when,
+            sourceStart,
+            sourceEnd,
+            speed = 1,
+            volume = 1,
+        }) => {
+            if (!buffer || sourceEnd <= sourceStart || when >= totalDuration) return;
+
+            const source = context.createBufferSource();
+            source.buffer = buffer;
+            source.playbackRate.value = Math.max(.01, speed);
+
+            const gain = context.createGain();
+            gain.gain.value = clamp(volume, 0, 2);
+
+            source.connect(gain);
+            gain.connect(context.destination);
+
+            try {
+                source.start(
+                    Math.max(0, when),
+                    Math.max(0, sourceStart),
+                    Math.max(0, sourceEnd - sourceStart),
+                );
+            } catch (error) {
+                console.warn('Unable to schedule export audio', error);
+            }
+        };
+
+        const spans = getTimelineSpans();
+
+        if (originalAudio) {
+            spans.forEach((span) => {
+                const clip = span.clip;
+                if (clip.muted || clip.audioDetached) return;
+
+                scheduleBuffer({
+                    buffer: originalAudio,
+                    when: span.start,
+                    sourceStart: clip.sourceStart,
+                    sourceEnd: clip.sourceEnd,
+                    speed: clip.speed,
+                    volume: 1,
+                });
+            });
         }
 
-        const needsTrim = (
-            overlapStart > sample.timestamp + EPSILON
-            || overlapEnd < sample.timestamp + sample.duration - EPSILON
-        );
+        audioClips.forEach((asset) => {
+            if (asset.muted) return;
 
-        if (!needsTrim) return sample;
+            scheduleBuffer({
+                buffer: asset.buffer,
+                when: asset.start,
+                sourceStart: asset.sourceStart,
+                sourceEnd: asset.sourceEnd,
+                speed: asset.speed,
+                volume: asset.volume,
+            });
+        });
 
-        const startFrame = clamp(
-            Math.ceil((overlapStart - sample.timestamp) * sample.sampleRate),
-            0,
-            sample.numberOfFrames,
-        );
-        const endFrame = clamp(
-            Math.floor((overlapEnd - sample.timestamp) * sample.sampleRate),
-            startFrame,
-            sample.numberOfFrames,
-        );
+        return context.startRendering();
+    }
 
-        if (endFrame <= startFrame) {
-            sample.close();
-            return null;
-        }
+    function createExportFrameProcessor(width, height) {
+        let canvas = null;
+        let context = null;
 
-        const trimmed = sample.trim(startFrame, endFrame);
-        sample.close();
-        return trimmed;
+        return (sample) => {
+            if (!canvas) {
+                canvas = typeof OffscreenCanvas === 'function'
+                    ? new OffscreenCanvas(width, height)
+                    : document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                context = canvas.getContext('2d');
+            }
+
+            const span = findSpanAtTimelineTime(sample.timestamp);
+            const clip = span?.clip;
+
+            context.filter = 'none';
+            context.globalAlpha = 1;
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, width, height);
+
+            if (clip?.filter === 'mosaic') {
+                drawMosaicSource(
+                    sample.toCanvasImageSource(),
+                    context,
+                    width,
+                    height,
+                    clamp((clip.filterStrength || 50) / 100, 0, 1),
+                );
+            } else {
+                context.filter = getFilterCss(clip);
+                sample.drawWithFit(context, { fit: 'contain' });
+                context.filter = 'none';
+            }
+
+            drawImageAssetsAt(context, sample.timestamp, width, height);
+            return canvas;
+        };
     }
 
     async function exportEditedTimeline() {
@@ -965,9 +1832,8 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             Output,
             BufferTarget,
             VideoSampleSink,
-            AudioSampleSink,
             VideoSampleSource,
-            AudioSampleSource,
+            AudioBufferSource,
             Quality,
         } = Mediabunny;
 
@@ -975,6 +1841,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         replaceButton.disabled = true;
         cancelButton.hidden = false;
         progressBlock.hidden = false;
+        formatBadge.hidden = false;
         progressBar.value = 0;
         progressPercent.textContent = '0%';
         progressLabel.textContent = 'メディアを解析中…';
@@ -992,22 +1859,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         try {
             const videoTrack = await input.getPrimaryVideoTrack();
-            if (!videoTrack) {
-                throw new Error('動画トラックが見つかりません。');
-            }
-            if (!await videoTrack.canDecode()) {
-                throw new Error('この動画コーデックをブラウザでデコードできません。');
+            if (!videoTrack || !await videoTrack.canDecode()) {
+                throw new Error('動画トラックをデコードできません。');
             }
 
-            const audioTrack = await input.getPrimaryAudioTrack();
-            const includeAudio = Boolean(
-                audioTrack
-                && clips.some((clip) => !clip.muted)
-                && await audioTrack.canDecode()
-            );
+            const total = getTimelineDuration();
+            const mixedAudio = await renderProjectAudio(total);
+            const preset = await chooseExportPreset(Boolean(mixedAudio));
+            const { width, height } = getExportSize();
+            const fps = clamp(Number(fpsSelect.value) || 30, 1, 120);
+            const processFrame = createExportFrameProcessor(width, height);
 
-            const preset = await chooseExportPreset(includeAudio);
-            formatBadge.textContent = preset.extension.toUpperCase();
+            formatBadge.textContent = `${preset.extension.toUpperCase()} · ${width}×${height} · ${fps}fps`;
 
             const target = new BufferTarget();
             output = new Output({
@@ -1019,11 +1882,19 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 codec: preset.videoCodec,
                 quality: new Quality('high'),
                 keyFrameInterval: 1,
+                transform: {
+                    width,
+                    height,
+                    fit: 'contain',
+                    frameRate: fps,
+                    process: processFrame,
+                    force: true,
+                },
             });
-            output.addVideoTrack(videoSource);
+            output.addVideoTrack(videoSource, { frameRate: fps });
 
-            if (includeAudio && preset.audioCodec) {
-                audioSource = new AudioSampleSource({
+            if (mixedAudio && preset.audioCodec) {
+                audioSource = new AudioBufferSource({
                     codec: preset.audioCodec,
                     quality: new Quality('high'),
                 });
@@ -1042,80 +1913,59 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
             await output.start();
 
+            const audioPromise = mixedAudio && audioSource
+                ? audioSource.add(mixedAudio).then(() => audioSource.close())
+                : Promise.resolve();
+
             const videoSink = new VideoSampleSink(videoTrack);
-            const audioSink = includeAudio ? new AudioSampleSink(audioTrack) : null;
-            const total = getTimelineDuration();
             let outputOffset = 0;
-
-            const updateProgress = (time) => {
-                const progress = clamp(time / total, 0, 1);
-                progressBar.value = progress;
-                progressPercent.textContent = `${Math.round(progress * 100)}%`;
-            };
-
             progressLabel.textContent = 'タイムラインを書き出し中…';
 
             for (const clip of clips) {
                 if (cancelledByUser) throw new Error('canceled');
 
-                const clipDuration = getClipDuration(clip);
-                const videoIterator = videoSink.samples(clip.sourceStart, clip.sourceEnd)[Symbol.asyncIterator]();
-                const audioIterator = (
-                    audioSink && audioSource && !clip.muted
-                        ? audioSink.samples(clip.sourceStart, clip.sourceEnd)[Symbol.asyncIterator]()
-                        : null
-                );
+                const iterator = videoSink.samples(
+                    clip.sourceStart,
+                    clip.sourceEnd,
+                )[Symbol.asyncIterator]();
 
-                let videoResult = await videoIterator.next();
-                let audioResult = audioIterator ? await audioIterator.next() : { done: true, value: null };
+                let result = await iterator.next();
                 let firstVideoSample = true;
 
-                while (!videoResult.done || !audioResult.done) {
+                while (!result.done) {
                     if (cancelledByUser) throw new Error('canceled');
 
-                    const takeVideo = (
-                        audioResult.done
-                        || (
-                            !videoResult.done
-                            && videoResult.value.timestamp <= audioResult.value.timestamp
-                        )
-                    );
+                    const sample = result.value;
+                    const overlapStart = Math.max(sample.timestamp, clip.sourceStart);
+                    const overlapEnd = Math.min(sample.timestamp + sample.duration, clip.sourceEnd);
 
-                    if (takeVideo) {
-                        const sample = videoResult.value;
-                        const overlapStart = Math.max(sample.timestamp, clip.sourceStart);
-                        const overlapEnd = Math.min(sample.timestamp + sample.duration, clip.sourceEnd);
+                    if (overlapEnd > overlapStart + EPSILON) {
+                        sample.setTimestamp(
+                            outputOffset + (overlapStart - clip.sourceStart) / clip.speed,
+                        );
+                        sample.setDuration((overlapEnd - overlapStart) / clip.speed);
 
-                        if (overlapEnd > overlapStart + EPSILON) {
-                            sample.setTimestamp(outputOffset + Math.max(0, overlapStart - clip.sourceStart));
-                            sample.setDuration(overlapEnd - overlapStart);
-                            await videoSource.add(sample, { keyFrame: firstVideoSample });
-                            firstVideoSample = false;
-                            updateProgress(outputOffset + Math.min(clipDuration, overlapEnd - clip.sourceStart));
-                        }
+                        await videoSource.add(sample, { keyFrame: firstVideoSample });
+                        firstVideoSample = false;
 
-                        sample.close();
-                        videoResult = await videoIterator.next();
-                    } else {
-                        let sample = audioResult.value;
-                        sample = trimAudioSampleToRange(sample, clip.sourceStart, clip.sourceEnd);
-
-                        if (sample) {
-                            sample.setTimestamp(outputOffset + Math.max(0, sample.timestamp - clip.sourceStart));
-                            await audioSource.add(sample);
-                            sample.close();
-                        }
-
-                        audioResult = await audioIterator.next();
+                        const progress = clamp(
+                            (outputOffset + (overlapEnd - clip.sourceStart) / clip.speed) / total,
+                            0,
+                            1,
+                        );
+                        progressBar.value = progress;
+                        progressPercent.textContent = `${Math.round(progress * 100)}%`;
                     }
+
+                    sample.close();
+                    result = await iterator.next();
                 }
 
-                outputOffset += clipDuration;
-                updateProgress(outputOffset);
+                outputOffset += getClipDuration(clip);
             }
 
             videoSource.close();
-            audioSource?.close();
+            await audioPromise;
             await output.finalize();
 
             if (cancelledByUser) return;
@@ -1129,7 +1979,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             const downloadUrl = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
             anchor.href = downloadUrl;
-            anchor.download = `${baseName}-edited.${preset.extension}`;
+            anchor.download = `${baseName}-edited-${width}x${height}-${fps}fps.${preset.extension}`;
             document.body.appendChild(anchor);
             anchor.click();
             anchor.remove();
@@ -1147,22 +1997,14 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         } finally {
             exportJob = null;
             cancelButton.hidden = true;
-            exportButton.disabled = false;
+            exportButton.disabled = !currentFile || !clips.length;
             replaceButton.disabled = false;
 
             try {
-                if (output && output.state === 'started') {
-                    await output.cancel();
-                }
-            } catch {
-                // Already finalized or canceled.
-            }
+                if (output && output.state === 'started') await output.cancel();
+            } catch {}
 
-            try {
-                input.dispose();
-            } catch {
-                // Already disposed.
-            }
+            try { input.dispose(); } catch {}
         }
     }
 
@@ -1170,6 +2012,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const [file] = fileInput.files || [];
         if (file) loadFile(file);
         fileInput.value = '';
+    });
+
+    imageInput.addEventListener('change', () => {
+        const [file] = imageInput.files || [];
+        if (file) addImageFile(file);
+        imageInput.value = '';
+    });
+
+    audioInput.addEventListener('change', () => {
+        const [file] = audioInput.files || [];
+        if (file) addAudioFile(file);
+        audioInput.value = '';
     });
 
     ['dragenter', 'dragover'].forEach((eventName) => {
@@ -1192,14 +2046,31 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     });
 
     replaceButton.addEventListener('click', () => fileInput.click());
+    addImageButton.addEventListener('click', () => imageInput.click());
+    addAudioButton.addEventListener('click', () => audioInput.click());
+
+    resolutionSelect.addEventListener('change', () => {
+        customResolution.hidden = resolutionSelect.value !== 'custom';
+
+        if (resolutionSelect.value === 'source') {
+            exportWidthInput.value = String(sourceWidth);
+            exportHeightInput.value = String(sourceHeight);
+        }
+    });
+
+    snapshotButton.addEventListener('click', saveSnapshot);
 
     video.addEventListener('loadedmetadata', () => {
         sourceDuration = Number.isFinite(video.duration) ? video.duration : 0;
-        const dimensions = video.videoWidth && video.videoHeight
-            ? `${video.videoWidth}×${video.videoHeight}`
-            : '解像度不明';
+        sourceWidth = video.videoWidth || 1920;
+        sourceHeight = video.videoHeight || 1080;
 
-        fileMeta.textContent = `${formatBytes(currentFile?.size || 0)} · ${dimensions} · ${formatTime(sourceDuration)}`;
+        fileMeta.textContent = (
+            `${formatBytes(currentFile?.size || 0)} · ${sourceWidth}×${sourceHeight} · ${formatTime(sourceDuration)}`
+        );
+
+        exportWidthInput.value = String(sourceWidth);
+        exportHeightInput.value = String(sourceHeight);
         formatBadge.textContent = 'MP4';
         undoStack = [];
         redoStack = [];
@@ -1209,23 +2080,30 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
     video.addEventListener('error', () => {
         fileMeta.textContent = `${formatBytes(currentFile?.size || 0)} · プレビュー非対応`;
-        setStatus('このブラウザでは動画をプレビューできません。別形式の動画を試してください。', 'error');
+        setStatus('このブラウザでは動画をプレビューできません。', 'error');
     });
 
     video.addEventListener('seeked', () => {
         internalSeek = false;
+        updatePreviewScene();
+
+        if (playingTimeline && !video.paused) {
+            scheduleLayerAudioPlayback(logicalTime);
+        }
     });
 
     video.addEventListener('seeking', () => {
         if (internalSeek) return;
 
+        stopPreviewLayerAudio();
+
         const current = video.currentTime;
-        const selected = getSelectedClip();
+        const selectedClip = getSelectedVideoClip();
         const matching = (
-            selected
-            && current >= selected.sourceStart - EPSILON
-            && current <= selected.sourceEnd + EPSILON
-                ? selected
+            selectedClip
+            && current >= selectedClip.sourceStart - EPSILON
+            && current <= selectedClip.sourceEnd + EPSILON
+                ? selectedClip
                 : clips.find((clip) => (
                     current >= clip.sourceStart - EPSILON
                     && current <= clip.sourceEnd + EPSILON
@@ -1238,19 +2116,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const span = getSpanByClipId(matching.id);
         if (!span) return;
 
-        logicalTime = span.start + clamp(current - matching.sourceStart, 0, getClipDuration(matching));
-        video.muted = matching.muted;
+        logicalTime = span.start + (
+            clamp(current - matching.sourceStart, 0, matching.sourceEnd - matching.sourceStart)
+            / matching.speed
+        );
+
+        applyActiveVideoClip(matching);
         updatePlayheadVisual();
     });
 
     video.addEventListener('play', () => {
         playingTimeline = true;
         setPreviewButtonState(true);
+        scheduleLayerAudioPlayback(logicalTime);
         schedulePlaybackFrameMonitor();
     });
 
     video.addEventListener('pause', () => {
         cancelPlaybackFrameMonitor();
+        stopPreviewLayerAudio();
+
         if (!video.ended) {
             playingTimeline = false;
             setPreviewButtonState(false);
@@ -1265,7 +2150,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             playingTimeline
             && typeof video.requestVideoFrameCallback !== 'function'
             && !transitioningClip
-            && video.currentTime >= clip.sourceEnd - 0.012
+            && video.currentTime >= clip.sourceEnd - .012
         ) {
             transitioningClip = true;
             advanceToNextClip().finally(() => {
@@ -1275,30 +2160,23 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
 
         syncLogicalFromVideo();
+        renderMosaicPreviewIfNeeded();
     });
 
     video.addEventListener('ended', () => {
-        if (playingTimeline) {
-            advanceToNextClip();
-        }
+        if (playingTimeline) advanceToNextClip();
     });
 
     startInput.addEventListener('change', () => {
         const parsed = parseTime(startInput.value);
-        if (Number.isFinite(parsed)) {
-            applySelectedClipBoundary('start', parsed);
-        } else {
-            updateControlPanel();
-        }
+        if (Number.isFinite(parsed)) applySelectedClipBoundary('start', parsed);
+        else updateInspector();
     });
 
     endInput.addEventListener('change', () => {
         const parsed = parseTime(endInput.value);
-        if (Number.isFinite(parsed)) {
-            applySelectedClipBoundary('end', parsed);
-        } else {
-            updateControlPanel();
-        }
+        if (Number.isFinite(parsed)) applySelectedClipBoundary('end', parsed);
+        else updateInspector();
     });
 
     setStartButton.addEventListener('click', () => {
@@ -1309,20 +2187,71 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         applySelectedClipBoundary('end', video.currentTime);
     });
 
+    speedSelect.addEventListener('change', () => {
+        const clip = getSelectedVideoClip();
+        if (!clip) return;
+
+        const nextSpeed = clamp(Number(speedSelect.value) || 1, .25, 4);
+        if (Math.abs(nextSpeed - clip.speed) <= EPSILON) return;
+
+        const anchor = capturePlayheadAnchor();
+        pushUndoState();
+        clip.speed = nextSpeed;
+
+        audioClips
+            .filter((asset) => asset.kind === 'detached' && asset.linkedVideoId === clip.id)
+            .forEach((asset) => {
+                asset.speed = nextSpeed;
+                asset.duration = (asset.sourceEnd - asset.sourceStart) / nextSpeed;
+            });
+
+        renderTimeline();
+        restorePlayheadAnchor(anchor, true);
+        restartLayerAudioIfPlaying();
+    });
+
+    filterSelect.addEventListener('change', () => {
+        const clip = getSelectedVideoClip();
+        if (!clip) return;
+
+        pushUndoState();
+        clip.filter = filterSelect.value;
+        renderTimeline();
+        updatePreviewScene();
+    });
+
+    filterStrength.addEventListener('input', () => {
+        const clip = getSelectedVideoClip();
+        if (!clip) return;
+
+        clip.filterStrength = clamp(Number(filterStrength.value) || 0, 0, 100);
+        filterStrengthOutput.value = `${clip.filterStrength}%`;
+        filterStrengthOutput.textContent = `${clip.filterStrength}%`;
+        updatePreviewScene();
+    });
+
+    filterStrength.addEventListener('change', () => {
+        const clip = getSelectedVideoClip();
+        if (!clip) return;
+        renderTimeline();
+    });
+
+    separateAudioButton.addEventListener('click', separateSelectedAudio);
+
     resetRangeButton.addEventListener('click', () => {
         if (!sourceDuration || exportJob) return;
+
         pushUndoState();
-        video.pause();
-        playingTimeline = false;
-        setPreviewButtonState(false);
+        pauseTimelinePlayback();
         resetClips(true);
     });
 
     previewButton.addEventListener('click', async () => {
         if (playingTimeline && !video.paused) {
-            video.pause();
+            pauseTimelinePlayback();
             return;
         }
+
         await startTimelinePlayback();
     });
 
@@ -1330,9 +2259,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
     playhead.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
+
         event.preventDefault();
         draggingPlayhead = true;
-        video.pause();
+        pauseTimelinePlayback();
         playhead.setPointerCapture(event.pointerId);
         movePlayheadFromPointer(event, false);
     });
@@ -1344,40 +2274,53 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
     playhead.addEventListener('pointerup', (event) => {
         if (!draggingPlayhead) return;
+
         draggingPlayhead = false;
         timelinePane.classList.remove('is-snapping');
         playhead.releasePointerCapture(event.pointerId);
     });
 
     timelineWorkspace.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0 || event.target.closest('.clip-audio-button, .clip-delete-button')) return;
+        if (
+            event.button !== 0
+            || event.target.closest(
+                '.clip-audio-button, .clip-delete-button, .asset-delete, .asset-mute, .asset-clip',
+            )
+        ) {
+            return;
+        }
 
         if (event.ctrlKey) {
             event.preventDefault();
-            video.pause();
+            pauseTimelinePlayback();
             movePlayheadFromPointer(event, true);
             return;
         }
 
         const clipElement = event.target.closest('.timeline-clip');
         if (clipElement) {
-            selectClip(clipElement.dataset.clipId, false);
+            selectElement('video', clipElement.dataset.clipId);
             return;
         }
 
-        video.pause();
+        pauseTimelinePlayback();
         movePlayheadFromPointer(event, false);
     });
 
     timelineRuler.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
+
         event.preventDefault();
-        video.pause();
+        pauseTimelinePlayback();
+
         const rect = timelineRuler.getBoundingClientRect();
         const total = getTimelineDuration();
         if (!total || !rect.width) return;
-        const time = clamp((event.clientX - rect.left) / rect.width, 0, 1) * total;
-        seekLogical(time, { snap: true });
+
+        seekLogical(
+            clamp((event.clientX - rect.left) / rect.width, 0, 1) * total,
+            { snap: true },
+        );
     });
 
     document.addEventListener('keydown', async (event) => {
@@ -1385,6 +2328,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const typing = (
             target instanceof HTMLInputElement
             || target instanceof HTMLTextAreaElement
+            || target instanceof HTMLSelectElement
             || target?.isContentEditable
         );
 
@@ -1404,7 +2348,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         if (!typing && event.key === 'Delete') {
             event.preventDefault();
-            deleteClip();
+            deleteElement();
             return;
         }
 
@@ -1414,23 +2358,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             return;
         }
 
-        const plainSpace = (
+        if (
             !typing
             && event.code === 'Space'
             && !event.ctrlKey
             && !event.metaKey
             && !event.altKey
-        );
-
-        if (plainSpace) {
+        ) {
             event.preventDefault();
             if (event.repeat || !currentFile || !getTimelineDuration()) return;
 
-            if (!video.paused) {
-                video.pause();
-            } else {
-                await startTimelinePlayback();
-            }
+            if (!video.paused) pauseTimelinePlayback();
+            else await startTimelinePlayback();
         }
     });
 
@@ -1458,6 +2397,12 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
     window.addEventListener('beforeunload', () => {
         cancelPlaybackFrameMonitor();
+        stopPreviewLayerAudio();
+
         if (objectUrl) URL.revokeObjectURL(objectUrl);
+        assetObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+
+        try { decodeAudioContext?.close(); } catch {}
+        try { previewAudioContext?.close(); } catch {}
     });
 })();
