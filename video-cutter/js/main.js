@@ -1254,11 +1254,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 const channels = Math.max(...chunks.map((chunk) => chunk.buffer.numberOfChannels));
                 const maxEnd = Math.max(...chunks.map((chunk) => chunk.timestamp + chunk.duration));
                 const length = Math.max(1, Math.ceil(maxEnd * sampleRate));
-                const merged = new AudioBuffer({
+                const merged = getDecodeAudioContext().createBuffer(
+                    channels,
                     length,
-                    numberOfChannels: channels,
                     sampleRate,
-                });
+                );
 
                 chunks.forEach((chunk) => {
                     const offset = Math.max(0, Math.round(chunk.timestamp * sampleRate));
@@ -1883,9 +1883,6 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 quality: new Quality('high'),
                 keyFrameInterval: 1,
                 transform: {
-                    width,
-                    height,
-                    fit: 'contain',
                     frameRate: fps,
                     process: processFrame,
                     force: true,
