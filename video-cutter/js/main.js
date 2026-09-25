@@ -1495,6 +1495,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         activeClipId = null;
         logicalTime = 0;
         sourceDuration = 0;
+        sourceFps = 30;
+        resolutionSelect.value = 'source';
+        fpsSelect.value = 'source';
+        customResolution.hidden = true;
         sourceAudioBuffer = null;
         sourceAudioDecodePromise = null;
         undoStack = [];
@@ -2520,18 +2524,21 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         sourceDuration = Number.isFinite(video.duration) ? video.duration : 0;
         sourceWidth = video.videoWidth || 1920;
         sourceHeight = video.videoHeight || 1080;
+        sourceFps = 30;
 
-        fileMeta.textContent = (
-            `${formatBytes(currentFile?.size || 0)} · ${sourceWidth}×${sourceHeight} · ${formatTime(sourceDuration)}`
-        );
-
+        resolutionSelect.value = 'source';
+        fpsSelect.value = 'source';
+        customResolution.hidden = true;
         exportWidthInput.value = String(sourceWidth);
         exportHeightInput.value = String(sourceHeight);
+        updateSourceOutputLabels();
+
         formatBadge.textContent = 'MP4';
         undoStack = [];
         redoStack = [];
         resetClips(false);
         seekVideoTo(0);
+        detectSourceFrameRate(currentFile);
     });
 
     video.addEventListener('error', () => {
