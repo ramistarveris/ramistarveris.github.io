@@ -15,14 +15,9 @@
   const gameTitle = document.getElementById('gameTitle');
   const grid = document.getElementById('grid');
   const timer = document.getElementById('timer');
-
-  const COLOR_CYCLE = [
-    { key: 'red', hex: '#d94a3c' },
-    { key: 'orange', hex: '#e68a31' },
-    { key: 'yellow', hex: '#d7ba39' },
-    { key: 'green', hex: '#4fa44b' },
-    { key: 'blue', hex: '#3c64b8' }
-  ];
+  const sizeRange = document.getElementById('sizeRange');
+  const sizeValue = document.getElementById('sizeValue');
+  const backButton = document.getElementById('backButton');
 
   const ITEM_POOL = [
     'Acacia Boat', 'Anvil', 'Apple', 'Arrow', 'Azure Bluet',
@@ -62,11 +57,19 @@
     return list;
   }
 
+  function applySize(value) {
+    const size = Math.max(70, Math.min(140, Number(value) || 100));
+    sizeRange.value = String(size);
+    sizeValue.textContent = size + '%';
+    grid.style.setProperty('--scale', String(size / 100));
+    localStorage.setItem('p3solver:size', String(size));
+  }
+
   function showSelection() {
     state = null;
-    selectionScreen.classList.remove('hidden');
     gameScreen.classList.add('hidden');
     gameScreen.classList.remove('complete');
+    selectionScreen.classList.remove('hidden');
   }
 
   function startGame(type) {
@@ -85,10 +88,6 @@
     timer.textContent = '0.000';
     render();
     requestAnimationFrame(tick);
-  }
-
-  function restart() {
-    if (state) startGame(state.type);
   }
 
   function finish() {
@@ -110,13 +109,13 @@
   }
 
   function generateNumbers() {
-    const allowed = [10,11,12,13,14,15,16,19,20,21,22,23,24,25];
+    const slots = [10,11,12,13,14,15,16,19,20,21,22,23,24,25];
     const values = shuffle(Array.from({ length: 14 }, (_, i) => i + 1));
     const cells = {};
-    allowed.forEach((slot, i) => {
-      cells[slot] = { kind: 'pane', color: 'red', number: values[i], solved: false };
+    slots.forEach((slot, index) => {
+      cells[slot] = { number: values[index], solved: false };
     });
-    return { rows: 4, allowed, cells };
+    return { cols: 7, rows: 2, slots, cells };
   }
 
   function colorPrefixes(target) {
@@ -139,86 +138,83 @@
   }
 
   function generateColors() {
-    const allowed = [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43];
+    const slots = [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43];
     const targets = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'brown', 'orange', 'purple', 'light gray'];
     const target = pick(targets);
     const matching = ALL_COLOR_ITEMS.filter(name => matchesColor(name, target));
     const others = ALL_COLOR_ITEMS.filter(name => !matchesColor(name, target));
-
     const chosen = [];
-    const targetCount = Math.min(rand(5, 8), matching.length);
-    shuffle(matching).slice(0, targetCount).forEach(name => chosen.push(name));
-    while (chosen.length < allowed.length) chosen.push(pick(others));
+
+    shuffle(matching).slice(0, Math.min(rand(5, 8), matching.length)).forEach(name => chosen.push(name));
+    while (chosen.length < slots.length) chosen.push(pick(others));
 
     const cells = {};
-    shuffle(chosen).forEach((name, i) => {
-      cells[allowed[i]] = {
-        kind: 'item',
-        name,
+    shuffle(chosen).forEach((name, index) => {
+      cells[slots[index]] = {
         target: matchesColor(name, target),
-        solved: false,
-        color: hashColor(name)
+        solved: false
       };
     });
 
-    return { rows: 6, allowed, cells };
+    return { cols: 7, rows: 4, slots, cells };
   }
 
   function generateStartsWith() {
-    const allowed = [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43];
+    const slots = [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43];
     const letters = Array.from(new Set(ITEM_POOL.map(name => name[0].toUpperCase())))
       .filter(letter => ITEM_POOL.filter(name => name[0].toUpperCase() === letter).length >= 3);
     const letter = pick(letters);
     const matching = ITEM_POOL.filter(name => name[0].toUpperCase() === letter);
     const others = ITEM_POOL.filter(name => name[0].toUpperCase() !== letter);
-
     const chosen = [];
+
     shuffle(matching).slice(0, Math.min(rand(4, 7), matching.length)).forEach(name => chosen.push(name));
-    while (chosen.length < allowed.length) chosen.push(pick(others));
+    while (chosen.length < slots.length) chosen.push(pick(others));
 
     const cells = {};
-    shuffle(chosen).forEach((name, i) => {
-      cells[allowed[i]] = {
-        kind: 'item',
-        name,
+    shuffle(chosen).forEach((name, index) => {
+      cells[slots[index]] = {
         target: name[0].toUpperCase() === letter,
-        solved: false,
-        color: hashColor(name)
+        solved: false
       };
     });
 
-    return { rows: 5, allowed, cells };
+    return { cols: 7, rows: 4, slots, cells };
   }
 
   function generateRedGreen() {
-    const allowed = [11,12,13,14,15,20,21,22,23,24,29,30,31,32,33];
+    const slots = [11,12,13,14,15,20,21,22,23,24,29,30,31,32,33];
     const redCount = rand(6, 11);
-    const flags = shuffle(allowed.map((_, i) => i < redCount));
+    const redFlags = shuffle(slots.map((_, index) => index < redCount));
     const cells = {};
-    allowed.forEach((slot, i) => {
-      cells[slot] = { kind: 'pane', color: flags[i] ? 'red' : 'green' };
+
+    slots.forEach((slot, index) => {
+      cells[slot] = { red: redFlags[index] };
     });
-    return { rows: 5, allowed, cells };
+
+    return { cols: 5, rows: 3, slots, cells };
   }
 
   function generateRubix() {
-    const allowed = [12,13,14,21,22,23,30,31,32];
-    let colors;
+    const slots = [12,13,14,21,22,23,30,31,32];
+    let values;
+
     do {
-      colors = allowed.map(() => rand(0, 4));
-    } while (colors.every(value => value === colors[0]));
+      values = slots.map(() => rand(0, 4));
+    } while (values.every(value => value === values[0]));
 
     const cells = {};
-    allowed.forEach((slot, i) => {
-      cells[slot] = { kind: 'rubix', colorIndex: colors[i] };
+    slots.forEach((slot, index) => {
+      cells[slot] = { color: values[index] };
     });
 
-    return { rows: 5, allowed, cells };
+    return { cols: 3, rows: 3, slots, cells };
   }
 
   function generateMelody() {
     return {
-      rows: 6,
+      cols: 6,
+      rows: 4,
       target: rand(0, 4),
       stage: 0,
       current: rand(0, 4),
@@ -226,168 +222,6 @@
       stepMs: 230,
       lastStep: -1
     };
-  }
-
-  function hashColor(text) {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-    }
-    return 'hsl(' + (Math.abs(hash) % 360) + ' 38% 48%)';
-  }
-
-  function paneColor(name) {
-    if (name === 'red') return '#c43f3f';
-    if (name === 'green') return '#4caa4f';
-    return '#777';
-  }
-
-  function render() {
-    if (!state) return;
-    grid.innerHTML = '';
-
-    const rows = state.puzzle.rows;
-    const numberOrder = state.type === 'numbers' ? remainingNumbers() : [];
-    const rubix = state.type === 'rubix' ? rubixSolution() : null;
-
-    for (let slot = 0; slot < rows * 9; slot++) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'slot';
-
-      if (state.type === 'melody') {
-        renderMelody(button, slot);
-      } else {
-        const cell = state.puzzle.cells[slot];
-        if (cell) renderCell(button, slot, cell, numberOrder, rubix);
-      }
-
-      if (!state.finished && isInteractive(slot)) {
-        button.classList.add('interactive');
-
-        button.addEventListener('click', event => {
-          handleSlot(slot, state.type === 'rubix' && event.shiftKey ? 1 : 0);
-        });
-
-        button.addEventListener('contextmenu', event => {
-          if (state.type !== 'rubix') return;
-          event.preventDefault();
-          handleSlot(slot, 1);
-        });
-      }
-
-      grid.appendChild(button);
-    }
-  }
-
-  function renderCell(button, slot, cell, numberOrder, rubix) {
-    if (cell.solved) button.classList.add('solved');
-
-    if (cell.kind === 'pane') {
-      const pane = document.createElement('span');
-      pane.className = 'pane';
-      pane.style.setProperty('--pane-color', paneColor(cell.color));
-      button.appendChild(pane);
-
-      if (typeof cell.number === 'number') {
-        const count = document.createElement('span');
-        count.className = 'slot-count';
-        count.textContent = String(cell.number);
-        button.appendChild(count);
-      }
-    }
-
-    if (cell.kind === 'item') {
-      const icon = document.createElement('span');
-      icon.className = 'item-icon';
-      icon.style.setProperty('--item-color', cell.color);
-      button.appendChild(icon);
-
-      const initials = document.createElement('span');
-      initials.className = 'item-initials';
-      initials.textContent = initialsFor(cell.name);
-      button.appendChild(initials);
-
-      const label = document.createElement('span');
-      label.className = 'item-name';
-      label.textContent = cell.name;
-      button.appendChild(label);
-      button.title = cell.name;
-    }
-
-    if (cell.kind === 'rubix') {
-      const pane = document.createElement('span');
-      pane.className = 'pane';
-      pane.style.setProperty('--pane-color', COLOR_CYCLE[cell.colorIndex].hex);
-      button.appendChild(pane);
-    }
-
-    if (cell.solved) return;
-
-    if (state.type === 'numbers') {
-      const index = numberOrder.indexOf(slot);
-      if (index >= 0 && index < 3) button.classList.add('solver-' + (index + 1));
-    } else if (state.type === 'colors' || state.type === 'startswith') {
-      if (cell.target) button.classList.add('solver-target');
-    } else if (state.type === 'redgreen') {
-      if (cell.color === 'red') button.classList.add('solver-target');
-    } else if (state.type === 'rubix') {
-      const diff = rubix.diffs[slot];
-      if (diff) {
-        button.classList.add(diff > 0 ? 'solver-positive' : 'solver-negative');
-        const number = document.createElement('span');
-        number.className = 'solver-number';
-        number.textContent = String(diff);
-        button.appendChild(number);
-      }
-    }
-  }
-
-  function renderMelody(button, slot) {
-    const p = state.puzzle;
-    const row = Math.floor(slot / 9);
-    const col = slot % 9;
-    const trackCol = col - 1;
-
-    if (row >= 1 && row <= 4 && trackCol === p.target) {
-      button.classList.add('melody-column');
-    }
-
-    if (row === 0 && trackCol === p.target) {
-      const marker = document.createElement('span');
-      marker.className = 'melody-marker';
-      button.appendChild(marker);
-    }
-
-    if (row === p.stage + 1 && trackCol === p.current) {
-      const runner = document.createElement('span');
-      runner.className = 'melody-runner';
-      button.appendChild(runner);
-    }
-
-    if (col === 7 && row >= 1 && row <= 4) {
-      const control = document.createElement('span');
-      control.className = 'melody-button';
-      if (row === p.stage + 1) control.classList.add('active');
-      button.appendChild(control);
-
-      if (row === p.stage + 1) button.classList.add('solver-target');
-    }
-  }
-
-  function initialsFor(name) {
-    const words = name.split(/\s+/).filter(Boolean);
-    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-    return words.slice(0, 2).map(word => word[0]).join('').toUpperCase();
-  }
-
-  function isInteractive(slot) {
-    if (state.type === 'melody') {
-      const row = Math.floor(slot / 9);
-      const col = slot % 9;
-      return col === 7 && row >= 1 && row <= 4;
-    }
-    return Boolean(state.puzzle.cells[slot]);
   }
 
   function remainingNumbers() {
@@ -398,11 +232,11 @@
   }
 
   function rubixSolution() {
-    const costs = [0,0,0,0,0];
+    const costs = [0, 0, 0, 0, 0];
 
     for (let target = 0; target < 5; target++) {
-      state.puzzle.allowed.forEach(slot => {
-        const current = state.puzzle.cells[slot].colorIndex;
+      state.puzzle.slots.forEach(slot => {
+        const current = state.puzzle.cells[slot].color;
         const distance = Math.abs(target - current);
         costs[target] += Math.min(distance, 5 - distance);
       });
@@ -414,80 +248,191 @@
     }
 
     const diffs = {};
-    state.puzzle.allowed.forEach(slot => {
-      const current = state.puzzle.cells[slot].colorIndex;
+    state.puzzle.slots.forEach(slot => {
+      const current = state.puzzle.cells[slot].color;
       let diff = target - current;
       if (diff > 2) diff -= 5;
       if (diff < -2) diff += 5;
       diffs[slot] = diff;
     });
 
-    return { target, diffs };
+    return diffs;
   }
 
-  function handleSlot(slot, mouseButton) {
+  function makeCell() {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'solver-cell';
+    return cell;
+  }
+
+  function showSolverCell(cell, className, label) {
+    cell.classList.add('visible');
+    if (className) cell.classList.add(className);
+
+    if (label !== undefined && label !== null) {
+      const text = document.createElement('span');
+      text.className = 'solver-label';
+      text.textContent = String(label);
+      cell.appendChild(text);
+    }
+  }
+
+  function render() {
+    if (!state) return;
+
+    grid.innerHTML = '';
+    grid.style.setProperty('--cols', String(state.puzzle.cols));
+
+    if (state.type === 'melody') {
+      renderMelody();
+      return;
+    }
+
+    const numberOrder = state.type === 'numbers' ? remainingNumbers() : [];
+    const rubixDiffs = state.type === 'rubix' ? rubixSolution() : null;
+
+    state.puzzle.slots.forEach(slot => {
+      const cell = makeCell();
+
+      if (!state.finished) {
+        if (state.type === 'numbers') {
+          const order = numberOrder.indexOf(slot);
+          if (order >= 0 && order < 3) {
+            showSolverCell(cell, 'order-' + (order + 1), order + 1);
+            cell.addEventListener('click', () => handleNumbers(slot));
+          }
+        }
+
+        else if (state.type === 'colors' || state.type === 'startswith') {
+          const data = state.puzzle.cells[slot];
+          if (data.target && !data.solved) {
+            showSolverCell(cell);
+            cell.addEventListener('click', () => handleTarget(slot));
+          }
+        }
+
+        else if (state.type === 'redgreen') {
+          if (state.puzzle.cells[slot].red) {
+            showSolverCell(cell);
+            cell.addEventListener('click', () => handleRedGreen(slot));
+          }
+        }
+
+        else if (state.type === 'rubix') {
+          const diff = rubixDiffs[slot];
+          if (diff !== 0) {
+            showSolverCell(cell, diff < 0 ? 'negative' : '', diff);
+            cell.addEventListener('click', event => handleRubix(slot, event.shiftKey ? 1 : 0));
+            cell.addEventListener('contextmenu', event => {
+              event.preventDefault();
+              handleRubix(slot, 1);
+            });
+          }
+        }
+      }
+
+      grid.appendChild(cell);
+    });
+  }
+
+  function renderMelody() {
+    const p = state.puzzle;
+
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 6; col++) {
+        const cell = makeCell();
+
+        if (col === p.target) {
+          cell.classList.add('column');
+        }
+
+        if (!state.finished && row === p.stage && col === p.current) {
+          const runner = document.createElement('span');
+          runner.className = 'melody-runner';
+          cell.appendChild(runner);
+        }
+
+        if (row === p.stage && col === p.target) {
+          const target = document.createElement('span');
+          target.className = 'melody-target';
+          cell.appendChild(target);
+        }
+
+        if (!state.finished && col === 5 && row === p.stage) {
+          showSolverCell(cell);
+          cell.addEventListener('click', () => handleMelody(row));
+        }
+
+        grid.appendChild(cell);
+      }
+    }
+  }
+
+  function handleNumbers(slot) {
     if (!state || state.finished) return;
+    const order = remainingNumbers();
+    if (slot !== order[0]) return;
 
-    if (state.type === 'numbers') {
-      const order = remainingNumbers();
-      if (slot !== order[0]) return;
-      state.puzzle.cells[slot].solved = true;
-      if (remainingNumbers().length === 0) finish();
+    state.puzzle.cells[slot].solved = true;
+    if (remainingNumbers().length === 0) finish();
+    else render();
+  }
+
+  function handleTarget(slot) {
+    if (!state || state.finished) return;
+    const data = state.puzzle.cells[slot];
+    if (!data || !data.target || data.solved) return;
+
+    data.solved = true;
+    const hasRemaining = state.puzzle.slots.some(id => {
+      const item = state.puzzle.cells[id];
+      return item.target && !item.solved;
+    });
+
+    if (!hasRemaining) finish();
+    else render();
+  }
+
+  function handleRedGreen(slot) {
+    if (!state || state.finished) return;
+    const data = state.puzzle.cells[slot];
+    if (!data || !data.red) return;
+
+    data.red = false;
+    if (state.puzzle.slots.every(id => !state.puzzle.cells[id].red)) finish();
+    else render();
+  }
+
+  function handleRubix(slot, button) {
+    if (!state || state.finished) return;
+    const data = state.puzzle.cells[slot];
+    if (!data) return;
+
+    data.color = button === 0
+      ? (data.color + 1) % 5
+      : (data.color + 4) % 5;
+
+    const first = state.puzzle.cells[state.puzzle.slots[0]].color;
+    if (state.puzzle.slots.every(id => state.puzzle.cells[id].color === first)) finish();
+    else render();
+  }
+
+  function handleMelody(row) {
+    if (!state || state.finished) return;
+    const p = state.puzzle;
+
+    if (row !== p.stage || p.current !== p.target) return;
+
+    p.stage += 1;
+    if (p.stage >= 4) {
+      finish();
+      return;
     }
 
-    else if (state.type === 'colors' || state.type === 'startswith') {
-      const cell = state.puzzle.cells[slot];
-      if (!cell || !cell.target || cell.solved) return;
-      cell.solved = true;
-
-      const left = state.puzzle.allowed.some(id => {
-        const candidate = state.puzzle.cells[id];
-        return candidate.target && !candidate.solved;
-      });
-
-      if (!left) finish();
-    }
-
-    else if (state.type === 'redgreen') {
-      const cell = state.puzzle.cells[slot];
-      if (!cell || cell.color !== 'red') return;
-      cell.color = 'green';
-
-      if (state.puzzle.allowed.every(id => state.puzzle.cells[id].color === 'green')) {
-        finish();
-      }
-    }
-
-    else if (state.type === 'rubix') {
-      const cell = state.puzzle.cells[slot];
-      if (!cell) return;
-
-      cell.colorIndex = mouseButton === 0
-        ? (cell.colorIndex + 1) % 5
-        : (cell.colorIndex + 4) % 5;
-
-      const first = state.puzzle.cells[state.puzzle.allowed[0]].colorIndex;
-      if (state.puzzle.allowed.every(id => state.puzzle.cells[id].colorIndex === first)) {
-        finish();
-      }
-    }
-
-    else if (state.type === 'melody') {
-      const row = Math.floor(slot / 9);
-      const activeRow = state.puzzle.stage + 1;
-
-      if (row !== activeRow || state.puzzle.current !== state.puzzle.target) return;
-
-      state.puzzle.stage += 1;
-      if (state.puzzle.stage >= 4) {
-        finish();
-      } else {
-        state.puzzle.phaseStartedAt = performance.now() - rand(0, 3) * state.puzzle.stepMs;
-        state.puzzle.lastStep = -1;
-      }
-    }
-
-    if (state && !state.finished) render();
+    p.phaseStartedAt = performance.now() - rand(0, 3) * p.stepMs;
+    p.lastStep = -1;
+    render();
   }
 
   function updateMelody(now) {
@@ -498,7 +443,7 @@
     if (step === p.lastStep) return;
 
     p.lastStep = step;
-    const sequence = [0,1,2,3,4,3,2,1];
+    const sequence = [0, 1, 2, 3, 4, 3, 2, 1];
     p.current = sequence[((step % sequence.length) + sequence.length) % sequence.length];
     render();
   }
@@ -521,22 +466,15 @@
     button.addEventListener('click', () => startGame(button.dataset.type));
   });
 
-  gameTitle.addEventListener('click', showSelection);
+  sizeRange.addEventListener('input', () => applySize(sizeRange.value));
+  backButton.addEventListener('click', showSelection);
 
   window.addEventListener('keydown', event => {
-    if (event.repeat) return;
-
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && state) {
+      event.preventDefault();
       showSelection();
-      return;
-    }
-
-    if (!state) return;
-
-    if (event.key.toLowerCase() === 'r') {
-      restart();
-    } else if (event.key === 'Enter' && state.finished) {
-      restart();
     }
   });
+
+  applySize(localStorage.getItem('p3solver:size') || 100);
 })();
