@@ -50,9 +50,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const timelinePane = document.getElementById('timelinePane');
     const timelineRuler = document.getElementById('timelineRuler');
     const timelineWorkspace = document.getElementById('timelineWorkspace');
-    const clipTrack = document.getElementById('clipTrack');
-    const imageTrack = document.getElementById('imageTrack');
-    const audioTrack = document.getElementById('audioTrack');
+    const layerStack = document.getElementById('layerStack');
     const playhead = document.getElementById('playhead');
     const playheadTimeLabel = document.getElementById('playheadTimeLabel');
     const clipCountLabel = document.getElementById('clipCountLabel');
@@ -74,12 +72,15 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     let sourceDuration = 0;
     let sourceWidth = 1920;
     let sourceHeight = 1080;
+    let sourceFps = 30;
 
     let clips = [];
     let imageClips = [];
     let audioClips = [];
+    let layers = [];
     let clipIdCounter = 1;
     let assetIdCounter = 1;
+    let layerIdCounter = 1;
 
     let selectedType = 'video';
     let selectedId = null;
@@ -90,6 +91,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     let internalSeek = false;
     let draggingPlayhead = false;
     let draggedClipId = null;
+    let draggedLayerId = null;
     let transitioningClip = false;
     let playbackFrameCallbackId = null;
 
