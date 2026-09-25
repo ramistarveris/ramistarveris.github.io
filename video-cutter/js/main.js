@@ -168,6 +168,57 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return `${prefix}-${assetIdCounter++}`;
     }
 
+    function createLayer(items = [], { baseVideo = false, atTop = true } = {}) {
+        const layer = {
+            id: `layer-${layerIdCounter++}`,
+            baseVideo,
+            items: items.map((item) => ({ ...item })),
+        };
+
+        if (atTop) layers.unshift(layer);
+        else layers.push(layer);
+        return layer;
+    }
+
+    function getVideoLayer() {
+        return layers.find((layer) => layer.baseVideo) || null;
+    }
+
+    function syncVideoLayer() {
+        let layer = getVideoLayer();
+
+        if (!layer) {
+            layer = createLayer([], { baseVideo: true, atTop: false });
+        }
+
+        layer.items = clips.map((clip) => ({ type: 'video', id: clip.id }));
+        return layer;
+    }
+
+    function addLayerForItem(type, id) {
+        return createLayer([{ type, id }], { atTop: true });
+    }
+
+    function removeItemFromLayers(type, id) {
+        layers.forEach((layer) => {
+            layer.items = layer.items.filter((item) => !(item.type === type && item.id === id));
+        });
+
+        layers = layers.filter((layer) => layer.baseVideo || layer.items.length > 0);
+    }
+
+    function findLayerForItem(type, id) {
+        return layers.find((layer) => (
+            layer.items.some((item) => item.type === type && item.id === id)
+        )) || null;
+    }
+
+    function getLayerZIndex(layerId) {
+        const index = layers.findIndex((layer) => layer.id === layerId);
+        if (index < 0) return 1;
+        return (layers.length - index) * 10;
+    }
+
     function getClipDuration(clip) {
         return Math.max(0, clip.sourceEnd - clip.sourceStart) / Math.max(0.01, clip.speed || 1);
     }
@@ -222,8 +273,13 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             clips: clips.map((clip) => ({ ...clip })),
             imageClips: imageClips.map((clip) => ({ ...clip })),
             audioClips: audioClips.map((clip) => ({ ...clip })),
+            layers: layers.map((layer) => ({
+                ...layer,
+                items: layer.items.map((item) => ({ ...item })),
+            })),
             clipIdCounter,
             assetIdCounter,
+            layerIdCounter,
             selectedType,
             selectedId,
             activeClipId,
@@ -246,8 +302,13 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         clips = state.clips.map((clip) => ({ ...clip }));
         imageClips = state.imageClips.map((clip) => ({ ...clip }));
         audioClips = state.audioClips.map((clip) => ({ ...clip }));
+        layers = state.layers.map((layer) => ({
+            ...layer,
+            items: layer.items.map((item) => ({ ...item })),
+        }));
         clipIdCounter = state.clipIdCounter;
         assetIdCounter = state.assetIdCounter;
+        layerIdCounter = state.layerIdCounter;
         selectedType = state.selectedType;
         selectedId = state.selectedId;
         activeClipId = state.activeClipId;
