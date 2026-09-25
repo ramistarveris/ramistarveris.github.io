@@ -20,11 +20,6 @@
                 <h1>Video Editor</h1>
             </div>
             <div class="top-actions">
-                <button id="cancelButton" type="button" hidden>キャンセル</button>
-                <button class="primary-button top-export-button" id="exportButton" type="button" disabled>
-                    <iconify-icon icon="mdi:export"></iconify-icon>
-                    書き出す
-                </button>
                 <button class="icon theme-toggle" id="themeToggle" type="button" title="Switch to light mode" aria-label="Switch to light mode">
                     <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                         <circle cx="12" cy="12" r="4"></circle>
@@ -70,10 +65,17 @@
 
                 <aside class="panel control-pane">
                     <section class="inspector-section project-settings" aria-labelledby="projectTitle">
-                        <div class="control-head">
+                        <div class="control-head project-control-head">
                             <div>
                                 <p class="eyebrow">PROJECT</p>
                                 <h2 id="projectTitle">出力設定</h2>
+                            </div>
+                            <div class="project-head-actions">
+                                <button id="cancelButton" type="button" hidden>キャンセル</button>
+                                <button class="primary-button project-export-button" id="exportButton" type="button" disabled>
+                                    <iconify-icon icon="mdi:export"></iconify-icon>
+                                    書き出す
+                                </button>
                             </div>
                         </div>
 
@@ -81,10 +83,10 @@
                             <label class="setting-field">
                                 <span>解像度</span>
                                 <select id="resolutionSelect">
-                                    <option value="source">元動画</option>
+                                    <option value="source" selected>元動画</option>
                                     <option value="3840x2160">3840×2160 (4K)</option>
                                     <option value="2560x1440">2560×1440</option>
-                                    <option value="1920x1080" selected>1920×1080</option>
+                                    <option value="1920x1080">1920×1080</option>
                                     <option value="1280x720">1280×720</option>
                                     <option value="854x480">854×480</option>
                                     <option value="custom">カスタム</option>
@@ -98,8 +100,9 @@
                             <label class="setting-field">
                                 <span>FPS</span>
                                 <select id="fpsSelect">
+                                    <option value="source" selected>元動画</option>
                                     <option value="24">24</option>
-                                    <option value="30" selected>30</option>
+                                    <option value="30">30</option>
                                     <option value="60">60</option>
                                 </select>
                             </label>
@@ -238,27 +241,7 @@
                     <div class="timeline-ruler" id="timelineRuler" aria-hidden="true"></div>
 
                     <div class="timeline-workspace" id="timelineWorkspace">
-                        <div class="track-row video-track-row">
-                            <div class="track-label">
-                                <iconify-icon icon="mdi:movie-open-outline"></iconify-icon>
-                                <span>Video</span>
-                            </div>
-                            <div class="clip-track" id="clipTrack"></div>
-                        </div>
-                        <div class="track-row image-track-row">
-                            <div class="track-label">
-                                <iconify-icon icon="mdi:image-outline"></iconify-icon>
-                                <span>Image</span>
-                            </div>
-                            <div class="asset-track image-track" id="imageTrack"></div>
-                        </div>
-                        <div class="track-row audio-track-row">
-                            <div class="track-label">
-                                <iconify-icon icon="mdi:waveform"></iconify-icon>
-                                <span>Audio</span>
-                            </div>
-                            <div class="asset-track audio-track" id="audioTrack"></div>
-                        </div>
+                        <div class="layer-stack" id="layerStack"></div>
 
                         <button class="timeline-playhead" id="playhead" type="button" aria-label="再生位置をドラッグ" title="ドラッグして再生位置を移動">
                             <span class="playhead-handle"></span>
