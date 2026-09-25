@@ -1487,6 +1487,9 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         clips = [];
         imageClips = [];
         audioClips = [];
+        layers = [];
+        layerIdCounter = 1;
+        sourceFps = 30;
         selectedType = null;
         selectedId = null;
         activeClipId = null;
@@ -1607,9 +1610,13 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 start,
                 duration,
                 opacity: 1,
+                x: 0.5,
+                y: 0.5,
+                width: 0.38,
             };
 
             imageClips.push(asset);
+            addLayerForItem('image', asset.id);
             selectedType = 'image';
             selectedId = asset.id;
             renderTimeline();
@@ -1652,6 +1659,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             };
 
             audioClips.push(asset);
+            addLayerForItem('audio', asset.id);
             selectedType = 'audio';
             selectedId = asset.id;
             renderTimeline();
@@ -1700,6 +1708,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             };
 
             audioClips.push(audioAsset);
+            addLayerForItem('audio', audioAsset.id);
             applyActiveVideoClip(clip);
             selectedType = 'audio';
             selectedId = audioAsset.id;
