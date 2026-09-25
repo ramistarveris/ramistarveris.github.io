@@ -730,7 +730,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 return;
             }
 
-            selectElement(type, asset.id);
+            selectedType = type;
+            selectedId = asset.id;
+            element.classList.add('is-selected');
+            updateInspector();
+            updatePreviewScene();
             beginAssetDrag(event, asset, element, track);
         });
 
@@ -1793,7 +1797,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         event.preventDefault();
         event.stopPropagation();
-        selectElement('image', asset.id);
+        selectedType = 'image';
+        selectedId = asset.id;
+        wrapper.classList.add('is-selected');
+        updateInspector();
         pushUndoState();
 
         const stageRect = imageOverlayStage.getBoundingClientRect();
@@ -2773,9 +2780,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     timelineWorkspace.addEventListener('pointerdown', (event) => {
         if (
             event.button !== 0
-            || event.target.closest(
-                '.clip-audio-button, .clip-delete-button, .asset-delete, .asset-mute, .asset-clip',
-            )
+            || event.target.closest('.layer-item, .layer-label, .item-trim-handle')
         ) {
             return;
         }
@@ -2784,12 +2789,6 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             event.preventDefault();
             pauseTimelinePlayback();
             movePlayheadFromPointer(event, true);
-            return;
-        }
-
-        const clipElement = event.target.closest('.timeline-clip');
-        if (clipElement) {
-            selectElement('video', clipElement.dataset.clipId);
             return;
         }
 
