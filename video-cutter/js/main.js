@@ -2057,29 +2057,81 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         context.imageSmoothingEnabled = true;
     }
 
-    function drawImageAssetsAt(context, time, width, height) {
-        imageClips
-            .filter((asset) => time >= asset.start && time < asset.start + asset.duration)
-            .forEach((asset) => {
-                const bitmap = asset.bitmap;
-                if (!bitmap) return;
+    function drawImageAsset(context, asset, width, height) {
+        const bitmap = asset.bitmap;
+        if (!bitmap) return;
 
-                const maxWidth = width * .38;
-                const maxHeight = height * .65;
-                const scale = Math.min(maxWidth / bitmap.width, maxHeight / bitmap.height);
-                const drawWidth = bitmap.width * scale;
-                const drawHeight = bitmap.height * scale;
+        const drawWidth = width * clamp(asset.width ?? .38, .05, 1.5);
+        const drawHeight = drawWidth * (bitmap.height / Math.max(1, bitmap.width));
+        const centerX = width * clamp(asset.x ?? .5, 0, 1);
+        const centerY = height * clamp(asset.y ?? .5, 0, 1);
 
-                context.globalAlpha = asset.opacity ?? 1;
-                context.drawImage(
-                    bitmap,
-                    (width - drawWidth) / 2,
-                    (height - drawHeight) / 2,
-                    drawWidth,
-                    drawHeight,
-                );
-                context.globalAlpha = 1;
+        context.globalAlpha = asset.opacity ?? 1;
+        context.drawImage(
+            bitmap,
+            centerX - drawWidth / 2,
+            centerY - drawHeight / 2,
+            drawWidth,
+            drawHeight,
+        );
+        context.globalAlpha = 1;
+    }
+
+    function drawVideoSource(context, source, clip, width, height) {
+        if (!source || !clip) return;
+
+        const drawable = typeof source.toCanvasImageSource === 'function'
+            ? source.toCanvasImageSource()
+            : source;
+
+        if (clip.filter === 'mosaic') {
+            drawMosaicSource(
+                drawable,
+                context,
+                width,
+                height,
+                clamp((clip.filterStrength || 50) / 100, 0, 1),
+            );
+            return;
+        }
+
+        context.filter = getFilterCss(clip);
+        drawContained(drawable, context, width, height);
+        context.filter = 'none';
+    }
+
+    function drawProjectFrame(context, videoSource, time, clip, width, height) {
+        context.filter = 'none';
+        context.globalAlpha = 1;
+        context.fillStyle = '#000';
+        context.fillRect(0, 0, width, height);
+
+        const orderedLayers = [...layers].reverse();
+
+        orderedLayers.forEach((layer) => {
+            layer.items.forEach((item) => {
+                if (item.type === 'video') {
+                    if (clip && item.id === clip.id) {
+                        drawVideoSource(context, videoSource, clip, width, height);
+                    }
+                    return;
+                }
+
+                if (item.type === 'image') {
+                    const asset = imageClips.find((candidate) => candidate.id === item.id);
+                    if (
+                        asset
+                        && time >= asset.start - EPSILON
+                        && time < asset.start + asset.duration - EPSILON
+                    ) {
+                        drawImageAsset(context, asset, width, height);
+                    }
+                }
             });
+        });
+
+        context.filter = 'none';
+        context.globalAlpha = 1;
     }
 
     async function saveSnapshot() {
@@ -2092,36 +2144,18 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         const context = canvas.getContext('2d');
         const span = findSpanAtTimelineTime(logicalTime);
-        const clip = span?.clip;
-
-        context.fillStyle = '#000';
-        context.fillRect(0, 0, width, height);
-
-        if (clip?.filter === 'mosaic') {
-            drawMosaicSource(
-                video,
-                context,
-                width,
-                height,
-                clamp((clip.filterStrength || 50) / 100, 0, 1),
-            );
-        } else {
-            context.filter = getFilterCss(clip);
-            drawContained(video, context, width, height);
-            context.filter = 'none';
-        }
-
-        drawImageAssetsAt(context, logicalTime, width, height);
+        drawProjectFrame(context, video, logicalTime, span?.clip, width, height);
 
         const mimeType = snapshotFormat.value === 'jpeg' ? 'image/jpeg' : 'image/png';
         const extension = snapshotFormat.value === 'jpeg' ? 'jpg' : 'png';
 
         canvas.toBlob((blob) => {
             if (!blob) return;
+
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
             anchor.href = url;
-            anchor.download = `scene-${formatTime(logicalTime).replace(/[:.]/g, '-') }.${extension}`;
+            anchor.download = `scene-${formatTime(logicalTime).replace(/[:.]/g, '-')}.${extension}`;
             document.body.appendChild(anchor);
             anchor.click();
             anchor.remove();
@@ -2170,7 +2204,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const needsSourceAudio = clips.some((clip) => !clip.muted && !clip.audioDetached);
         let originalAudio = null;
 
-        if (needsSourceAudio) originalAudio = await ensureSourceAudioBuffer();
+        if (needsSourceAudio) {
+            progressLabel.textContent = '音声を準備中…';
+            await yieldToBrowser();
+            originalAudio = await ensureSourceAudioBuffer();
+        }
 
         const hasLayerAudio = audioClips.some((asset) => !asset.muted && asset.buffer);
         if (!originalAudio && !hasLayerAudio) return null;
@@ -2210,23 +2248,19 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             }
         };
 
-        const spans = getTimelineSpans();
+        getTimelineSpans().forEach((span) => {
+            const clip = span.clip;
+            if (!originalAudio || clip.muted || clip.audioDetached) return;
 
-        if (originalAudio) {
-            spans.forEach((span) => {
-                const clip = span.clip;
-                if (clip.muted || clip.audioDetached) return;
-
-                scheduleBuffer({
-                    buffer: originalAudio,
-                    when: span.start,
-                    sourceStart: clip.sourceStart,
-                    sourceEnd: clip.sourceEnd,
-                    speed: clip.speed,
-                    volume: 1,
-                });
+            scheduleBuffer({
+                buffer: originalAudio,
+                when: span.start,
+                sourceStart: clip.sourceStart,
+                sourceEnd: clip.sourceEnd,
+                speed: clip.speed,
+                volume: 1,
             });
-        }
+        });
 
         audioClips.forEach((asset) => {
             if (asset.muted) return;
@@ -2244,47 +2278,6 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return context.startRendering();
     }
 
-    function createExportFrameProcessor(width, height) {
-        let canvas = null;
-        let context = null;
-
-        return (sample) => {
-            if (!canvas) {
-                canvas = typeof OffscreenCanvas === 'function'
-                    ? new OffscreenCanvas(width, height)
-                    : document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                context = canvas.getContext('2d');
-            }
-
-            const span = findSpanAtTimelineTime(sample.timestamp);
-            const clip = span?.clip;
-
-            context.filter = 'none';
-            context.globalAlpha = 1;
-            context.fillStyle = '#000';
-            context.fillRect(0, 0, width, height);
-
-            if (clip?.filter === 'mosaic') {
-                drawMosaicSource(
-                    sample.toCanvasImageSource(),
-                    context,
-                    width,
-                    height,
-                    clamp((clip.filterStrength || 50) / 100, 0, 1),
-                );
-            } else {
-                context.filter = getFilterCss(clip);
-                sample.drawWithFit(context, { fit: 'contain' });
-                context.filter = 'none';
-            }
-
-            drawImageAssetsAt(context, sample.timestamp, width, height);
-            return canvas;
-        };
-    }
-
     async function exportEditedTimeline() {
         if (!currentFile || !clips.length || !getTimelineDuration()) return;
 
@@ -2295,7 +2288,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             Output,
             BufferTarget,
             VideoSampleSink,
-            VideoSampleSource,
+            CanvasSource,
             AudioBufferSource,
             Quality,
         } = Mediabunny;
@@ -2307,7 +2300,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         formatBadge.hidden = false;
         progressBar.value = 0;
         progressPercent.textContent = '0%';
-        progressLabel.textContent = 'メディアを解析中…';
+        progressLabel.textContent = '書き出しを準備中…';
         setStatus('');
         cancelledByUser = false;
 
@@ -2317,7 +2310,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         });
 
         let output = null;
-        let videoSource = null;
+        let canvasSource = null;
         let audioSource = null;
 
         try {
@@ -2327,13 +2320,21 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             }
 
             const total = getTimelineDuration();
-            const mixedAudio = await renderProjectAudio(total);
-            const preset = await chooseExportPreset(Boolean(mixedAudio));
             const { width, height } = getExportSize();
-            const fps = clamp(Number(fpsSelect.value) || 30, 1, 120);
-            const processFrame = createExportFrameProcessor(width, height);
+            const fps = getExportFps();
+            const frameDuration = 1 / fps;
+            const frameCount = Math.max(1, Math.ceil(total * fps));
 
-            formatBadge.textContent = `${preset.extension.toUpperCase()} · ${width}×${height} · ${fps}fps`;
+            await yieldToBrowser();
+            const mixedAudio = await renderProjectAudio(total);
+            await yieldToBrowser();
+
+            if (cancelledByUser) throw new Error('canceled');
+
+            const preset = await chooseExportPreset(Boolean(mixedAudio));
+            formatBadge.textContent = (
+                `${preset.extension.toUpperCase()} · ${width}×${height} · ${formatFps(fps)}fps`
+            );
 
             const target = new BufferTarget();
             output = new Output({
@@ -2341,17 +2342,21 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 target,
             });
 
-            videoSource = new VideoSampleSource({
+            const renderCanvas = typeof OffscreenCanvas === 'function'
+                ? new OffscreenCanvas(width, height)
+                : document.createElement('canvas');
+
+            renderCanvas.width = width;
+            renderCanvas.height = height;
+            const context = renderCanvas.getContext('2d', { alpha: false });
+
+            canvasSource = new CanvasSource(renderCanvas, {
                 codec: preset.videoCodec,
                 quality: new Quality('high'),
-                keyFrameInterval: 1,
-                transform: {
-                    frameRate: fps,
-                    process: processFrame,
-                    force: true,
-                },
+                hardwareAcceleration: 'prefer-hardware',
+                keyFrameInterval: 2,
             });
-            output.addVideoTrack(videoSource, { frameRate: fps });
+            output.addVideoTrack(canvasSource, { frameRate: fps });
 
             if (mixedAudio && preset.audioCodec) {
                 audioSource = new AudioBufferSource({
@@ -2364,10 +2369,14 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             exportJob = {
                 cancel: async () => {
                     cancelledByUser = true;
-                    input.dispose();
-                    if (output && (output.state === 'pending' || output.state === 'started')) {
-                        await output.cancel();
-                    }
+
+                    try {
+                        if (output && (output.state === 'pending' || output.state === 'started')) {
+                            await output.cancel();
+                        }
+                    } catch {}
+
+                    try { input.dispose(); } catch {}
                 },
             };
 
@@ -2377,54 +2386,69 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 ? audioSource.add(mixedAudio).then(() => audioSource.close())
                 : Promise.resolve();
 
-            const videoSink = new VideoSampleSink(videoTrack);
-            let outputOffset = 0;
-            progressLabel.textContent = 'タイムラインを書き出し中…';
+            const videoSink = new VideoSampleSink(videoTrack, {
+                hardwareAcceleration: 'prefer-hardware',
+            });
 
-            for (const clip of clips) {
+            const keyFrameEvery = Math.max(1, Math.round(fps * 2));
+            const yieldInterval = width * height >= 2560 * 1440 ? 1 : 3;
+
+            progressLabel.textContent = 'フレームを書き出し中…';
+
+            for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
                 if (cancelledByUser) throw new Error('canceled');
 
-                const iterator = videoSink.samples(
-                    clip.sourceStart,
-                    clip.sourceEnd,
-                )[Symbol.asyncIterator]();
+                const timelineTime = Math.min(total, frameIndex / fps);
+                const span = findSpanAtTimelineTime(timelineTime);
+                const clip = span?.clip;
 
-                let result = await iterator.next();
-                let firstVideoSample = true;
+                let sample = null;
 
-                while (!result.done) {
-                    if (cancelledByUser) throw new Error('canceled');
-
-                    const sample = result.value;
-                    const overlapStart = Math.max(sample.timestamp, clip.sourceStart);
-                    const overlapEnd = Math.min(sample.timestamp + sample.duration, clip.sourceEnd);
-
-                    if (overlapEnd > overlapStart + EPSILON) {
-                        sample.setTimestamp(
-                            outputOffset + (overlapStart - clip.sourceStart) / clip.speed,
-                        );
-                        sample.setDuration((overlapEnd - overlapStart) / clip.speed);
-
-                        await videoSource.add(sample, { keyFrame: firstVideoSample });
-                        firstVideoSample = false;
-
-                        const progress = clamp(
-                            (outputOffset + (overlapEnd - clip.sourceStart) / clip.speed) / total,
-                            0,
-                            1,
-                        );
-                        progressBar.value = progress;
-                        progressPercent.textContent = `${Math.round(progress * 100)}%`;
-                    }
-
-                    sample.close();
-                    result = await iterator.next();
+                if (span && clip) {
+                    const offset = clamp(
+                        timelineTime - span.start,
+                        0,
+                        getClipDuration(clip),
+                    );
+                    const sourceTime = clip.sourceStart + offset * clip.speed;
+                    sample = await videoSink.getSample(sourceTime);
                 }
 
-                outputOffset += getClipDuration(clip);
+                if (cancelledByUser) {
+                    sample?.close();
+                    throw new Error('canceled');
+                }
+
+                drawProjectFrame(
+                    context,
+                    sample,
+                    timelineTime,
+                    clip,
+                    width,
+                    height,
+                );
+
+                const timestamp = frameIndex / fps;
+                const duration = Math.min(frameDuration, Math.max(frameDuration, total - timestamp));
+
+                await canvasSource.add(
+                    timestamp,
+                    duration,
+                    { keyFrame: frameIndex % keyFrameEvery === 0 },
+                );
+
+                sample?.close();
+
+                const progress = (frameIndex + 1) / frameCount;
+                progressBar.value = progress;
+                progressPercent.textContent = `${Math.round(progress * 100)}%`;
+
+                if (frameIndex % yieldInterval === 0) {
+                    await yieldToBrowser();
+                }
             }
 
-            videoSource.close();
+            canvasSource.close();
             await audioPromise;
             await output.finalize();
 
@@ -2433,13 +2457,16 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             progressBar.value = 1;
             progressPercent.textContent = '100%';
             progressLabel.textContent = 'ダウンロードを準備中…';
+            await yieldToBrowser();
 
             const baseName = currentFile.name.replace(/\.[^.]+$/, '') || 'video';
             const blob = new Blob([target.buffer], { type: preset.mimeType });
             const downloadUrl = URL.createObjectURL(blob);
             const anchor = document.createElement('a');
             anchor.href = downloadUrl;
-            anchor.download = `${baseName}-edited-${width}x${height}-${fps}fps.${preset.extension}`;
+            anchor.download = (
+                `${baseName}-edited-${width}x${height}-${formatFps(fps)}fps.${preset.extension}`
+            );
             document.body.appendChild(anchor);
             anchor.click();
             anchor.remove();
