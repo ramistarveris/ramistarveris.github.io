@@ -1130,10 +1130,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     function updatePlayheadVisual() {
         const total = getTimelineDuration();
         const workspaceRect = timelineWorkspace.getBoundingClientRect();
-        const trackRect = clipTrack.getBoundingClientRect();
+        const referenceTrack = getReferenceTrack();
+        const trackRect = referenceTrack?.getBoundingClientRect();
 
-        if (!total || !workspaceRect.width || !trackRect.width) {
-            playhead.style.left = `${Math.max(0, trackRect.left - workspaceRect.left)}px`;
+        if (!total || !workspaceRect.width || !trackRect?.width) {
+            playhead.style.left = '82px';
             playheadTimeLabel.textContent = '0:00.00';
             updatePreviewScene();
             return;
@@ -1147,17 +1148,17 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     }
 
     function logicalTimeFromClientX(clientX) {
-        const rect = clipTrack.getBoundingClientRect();
+        const rect = getReferenceTrack()?.getBoundingClientRect();
         const total = getTimelineDuration();
-        if (!rect.width || !total) return 0;
+        if (!rect?.width || !total) return 0;
         return clamp((clientX - rect.left) / rect.width, 0, 1) * total;
     }
 
     function snapLogicalTime(time) {
         const total = getTimelineDuration();
-        const rect = clipTrack.getBoundingClientRect();
+        const rect = getReferenceTrack()?.getBoundingClientRect();
 
-        if (!total || !rect.width) return { time: 0, snapped: false };
+        if (!total || !rect?.width) return { time: 0, snapped: false };
 
         const threshold = total * SNAP_PIXELS / rect.width;
         const boundaries = [0, total];
