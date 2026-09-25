@@ -1784,6 +1784,58 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
     }
 
+    function beginImageStageTransform(event, asset, mode, wrapper) {
+        if (event.button !== 0) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        selectElement('image', asset.id);
+        pushUndoState();
+
+        const stageRect = imageOverlayStage.getBoundingClientRect();
+        if (!stageRect.width || !stageRect.height) return;
+
+        const pointerId = event.pointerId;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const originalX = asset.x ?? 0.5;
+        const originalY = asset.y ?? 0.5;
+        const originalWidth = asset.width ?? 0.38;
+
+        wrapper.setPointerCapture(pointerId);
+
+        const move = (moveEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
+
+            if (mode === 'move') {
+                asset.x = clamp(originalX + dx / stageRect.width, 0, 1);
+                asset.y = clamp(originalY + dy / stageRect.height, 0, 1);
+            } else {
+                asset.width = clamp(
+                    originalWidth + dx / stageRect.width * 1.6,
+                    0.05,
+                    1.5,
+                );
+            }
+
+            wrapper.style.left = `${asset.x * 100}%`;
+            wrapper.style.top = `${asset.y * 100}%`;
+            wrapper.style.width = `${asset.width * 100}%`;
+        };
+
+        const finish = () => {
+            wrapper.removeEventListener('pointermove', move);
+            wrapper.removeEventListener('pointerup', finish);
+            wrapper.removeEventListener('pointercancel', finish);
+            updatePreviewScene();
+        };
+
+        wrapper.addEventListener('pointermove', move);
+        wrapper.addEventListener('pointerup', finish);
+        wrapper.addEventListener('pointercancel', finish);
+    }
+
     function renderImageOverlays() {
         imageOverlayStage.replaceChildren();
 
@@ -1793,12 +1845,41 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 && logicalTime < asset.start + asset.duration - EPSILON
             ))
             .forEach((asset) => {
+                const layer = findLayerForItem('image', asset.id);
+                const wrapper = document.createElement('div');
+                wrapper.className = 'scene-image-wrapper';
+                wrapper.style.left = `${(asset.x ?? .5) * 100}%`;
+                wrapper.style.top = `${(asset.y ?? .5) * 100}%`;
+                wrapper.style.width = `${(asset.width ?? .38) * 100}%`;
+                wrapper.style.zIndex = String(getLayerZIndex(layer?.id));
+
+                if (selectedType === 'image' && selectedId === asset.id) {
+                    wrapper.classList.add('is-selected');
+                }
+
                 const img = document.createElement('img');
                 img.className = 'scene-image';
                 img.src = asset.url;
                 img.alt = '';
                 img.style.opacity = String(asset.opacity ?? 1);
-                imageOverlayStage.appendChild(img);
+                wrapper.appendChild(img);
+
+                wrapper.addEventListener('pointerdown', (event) => {
+                    if (event.target.closest('.scene-image-resize')) return;
+                    beginImageStageTransform(event, asset, 'move', wrapper);
+                });
+
+                if (selectedType === 'image' && selectedId === asset.id) {
+                    const resize = document.createElement('span');
+                    resize.className = 'scene-image-resize';
+                    resize.title = 'ドラッグでリサイズ';
+                    resize.addEventListener('pointerdown', (event) => {
+                        beginImageStageTransform(event, asset, 'resize', wrapper);
+                    });
+                    wrapper.appendChild(resize);
+                }
+
+                imageOverlayStage.appendChild(wrapper);
             });
     }
 
@@ -1843,6 +1924,11 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     function updatePreviewScene() {
         const span = findSpanAtTimelineTime(logicalTime);
         const clip = span?.clip;
+        const videoLayer = clip ? findLayerForItem('video', clip.id) : getVideoLayer();
+        const videoZ = getLayerZIndex(videoLayer?.id);
+
+        video.style.zIndex = String(videoZ);
+        effectCanvas.style.zIndex = String(videoZ + 1);
 
         if (clip) applyActiveVideoClip(clip);
         renderImageOverlays();
