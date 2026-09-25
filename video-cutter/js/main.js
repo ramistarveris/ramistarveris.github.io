@@ -2207,32 +2207,25 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         throw new Error('このブラウザで利用可能な動画エンコーダーが見つかりません。');
     }
 
-    async function renderProjectAudio(totalDuration) {
-        const needsSourceAudio = clips.some((clip) => !clip.muted && !clip.audioDetached);
-        let originalAudio = null;
-
-        if (needsSourceAudio) {
-            progressLabel.textContent = '音声を準備中…';
-            await yieldToBrowser();
-            originalAudio = await ensureSourceAudioBuffer();
-        }
-
-        const hasLayerAudio = audioClips.some((asset) => !asset.muted && asset.buffer);
-        if (!originalAudio && !hasLayerAudio) return null;
-
+    async function renderAudioChunk(
+        chunkStart,
+        chunkDuration,
+        sourceAudioSink,
+    ) {
         const sampleRate = 48000;
-        const length = Math.max(1, Math.ceil(totalDuration * sampleRate));
-        const context = new OfflineAudioContext(2, length, sampleRate);
+        const frameLength = Math.max(1, Math.ceil(chunkDuration * sampleRate));
+        const context = new OfflineAudioContext(2, frameLength, sampleRate);
+        const chunkEnd = chunkStart + chunkDuration;
 
         const scheduleBuffer = ({
             buffer,
             when,
-            sourceStart,
-            sourceEnd,
+            sourceOffset,
+            sourceDuration,
             speed = 1,
             volume = 1,
         }) => {
-            if (!buffer || sourceEnd <= sourceStart || when >= totalDuration) return;
+            if (!buffer || sourceDuration <= EPSILON) return;
 
             const source = context.createBufferSource();
             source.buffer = buffer;
@@ -2247,38 +2240,86 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             try {
                 source.start(
                     Math.max(0, when),
-                    Math.max(0, sourceStart),
-                    Math.max(0, sourceEnd - sourceStart),
+                    Math.max(0, sourceOffset),
+                    Math.max(0, sourceDuration),
                 );
             } catch (error) {
-                console.warn('Unable to schedule export audio', error);
+                console.warn('Unable to schedule audio chunk', error);
             }
         };
 
-        getTimelineSpans().forEach((span) => {
-            const clip = span.clip;
-            if (!originalAudio || clip.muted || clip.audioDetached) return;
+        if (sourceAudioSink) {
+            const spans = getTimelineSpans();
 
-            scheduleBuffer({
-                buffer: originalAudio,
-                when: span.start,
-                sourceStart: clip.sourceStart,
-                sourceEnd: clip.sourceEnd,
-                speed: clip.speed,
-                volume: 1,
-            });
-        });
+            for (const span of spans) {
+                const clip = span.clip;
+                if (clip.muted || clip.audioDetached) continue;
+
+                const overlapStart = Math.max(chunkStart, span.start);
+                const overlapEnd = Math.min(chunkEnd, span.end);
+                if (overlapEnd <= overlapStart + EPSILON) continue;
+
+                const sourceStart = (
+                    clip.sourceStart
+                    + (overlapStart - span.start) * clip.speed
+                );
+                const sourceEnd = (
+                    clip.sourceStart
+                    + (overlapEnd - span.start) * clip.speed
+                );
+
+                for await (const wrapped of sourceAudioSink.buffers(sourceStart, sourceEnd)) {
+                    const wrappedStart = Math.max(wrapped.timestamp, sourceStart);
+                    const wrappedEnd = Math.min(
+                        wrapped.timestamp + wrapped.duration,
+                        sourceEnd,
+                    );
+
+                    if (wrappedEnd <= wrappedStart + EPSILON) continue;
+
+                    const when = (
+                        overlapStart - chunkStart
+                        + (wrappedStart - sourceStart) / clip.speed
+                    );
+
+                    scheduleBuffer({
+                        buffer: wrapped.buffer,
+                        when,
+                        sourceOffset: wrappedStart - wrapped.timestamp,
+                        sourceDuration: wrappedEnd - wrappedStart,
+                        speed: clip.speed,
+                        volume: 1,
+                    });
+                }
+
+                await yieldToBrowser();
+            }
+        }
 
         audioClips.forEach((asset) => {
-            if (asset.muted) return;
+            if (asset.muted || !asset.buffer) return;
+
+            const assetEnd = asset.start + asset.duration;
+            const overlapStart = Math.max(chunkStart, asset.start);
+            const overlapEnd = Math.min(chunkEnd, assetEnd);
+            if (overlapEnd <= overlapStart + EPSILON) return;
+
+            const sourceStart = (
+                asset.sourceStart
+                + (overlapStart - asset.start) * (asset.speed || 1)
+            );
+            const sourceEnd = (
+                asset.sourceStart
+                + (overlapEnd - asset.start) * (asset.speed || 1)
+            );
 
             scheduleBuffer({
                 buffer: asset.buffer,
-                when: asset.start,
-                sourceStart: asset.sourceStart,
-                sourceEnd: asset.sourceEnd,
-                speed: asset.speed,
-                volume: asset.volume,
+                when: overlapStart - chunkStart,
+                sourceOffset: sourceStart,
+                sourceDuration: Math.max(0, sourceEnd - sourceStart),
+                speed: asset.speed || 1,
+                volume: asset.volume ?? 1,
             });
         });
 
@@ -2296,6 +2337,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             BufferTarget,
             VideoSampleSink,
             CanvasSource,
+            AudioBufferSink,
             AudioBufferSource,
             Quality,
         } = Mediabunny;
@@ -2332,13 +2374,24 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             const frameDuration = 1 / fps;
             const frameCount = Math.max(1, Math.ceil(total * fps));
 
-            await yieldToBrowser();
-            const mixedAudio = await renderProjectAudio(total);
-            await yieldToBrowser();
+            const inputAudioTrack = await input.getPrimaryAudioTrack();
+            const sourceAudioSink = (
+                inputAudioTrack
+                && await inputAudioTrack.canDecode()
+                && clips.some((clip) => !clip.muted && !clip.audioDetached)
+            )
+                ? new AudioBufferSink(inputAudioTrack)
+                : null;
 
+            const hasAudio = Boolean(
+                sourceAudioSink
+                || audioClips.some((asset) => !asset.muted && asset.buffer)
+            );
+
+            await yieldToBrowser();
             if (cancelledByUser) throw new Error('canceled');
 
-            const preset = await chooseExportPreset(Boolean(mixedAudio));
+            const preset = await chooseExportPreset(hasAudio);
             formatBadge.textContent = (
                 `${preset.extension.toUpperCase()} · ${width}×${height} · ${formatFps(fps)}fps`
             );
@@ -2365,7 +2418,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             });
             output.addVideoTrack(canvasSource, { frameRate: fps });
 
-            if (mixedAudio && preset.audioCodec) {
+            if (hasAudio && preset.audioCodec) {
                 audioSource = new AudioBufferSource({
                     codec: preset.audioCodec,
                     quality: new Quality('high'),
@@ -2388,10 +2441,6 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             };
 
             await output.start();
-
-            const audioPromise = mixedAudio && audioSource
-                ? audioSource.add(mixedAudio).then(() => audioSource.close())
-                : Promise.resolve();
 
             const videoSink = new VideoSampleSink(videoTrack, {
                 hardwareAcceleration: 'prefer-hardware',
@@ -2436,7 +2485,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 );
 
                 const timestamp = frameIndex / fps;
-                const duration = Math.min(frameDuration, Math.max(frameDuration, total - timestamp));
+                const duration = Math.max(
+                    1 / Math.max(1, fps * 1000),
+                    Math.min(frameDuration, total - timestamp),
+                );
 
                 await canvasSource.add(
                     timestamp,
@@ -2447,8 +2499,9 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 sample?.close();
 
                 const progress = (frameIndex + 1) / frameCount;
-                progressBar.value = progress;
-                progressPercent.textContent = `${Math.round(progress * 100)}%`;
+                const videoProgress = progress * .85;
+                progressBar.value = videoProgress;
+                progressPercent.textContent = `${Math.round(videoProgress * 100)}%`;
 
                 if (frameIndex % yieldInterval === 0) {
                     await yieldToBrowser();
@@ -2456,7 +2509,38 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             }
 
             canvasSource.close();
-            await audioPromise;
+
+            if (audioSource) {
+                const audioChunkSeconds = 5;
+                const chunkCount = Math.ceil(total / audioChunkSeconds);
+                progressLabel.textContent = '音声を書き出し中…';
+
+                for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+                    if (cancelledByUser) throw new Error('canceled');
+
+                    const chunkStart = chunkIndex * audioChunkSeconds;
+                    const chunkDuration = Math.min(
+                        audioChunkSeconds,
+                        total - chunkStart,
+                    );
+
+                    const renderedChunk = await renderAudioChunk(
+                        chunkStart,
+                        chunkDuration,
+                        sourceAudioSink,
+                    );
+
+                    await audioSource.add(renderedChunk);
+
+                    const audioProgress = (chunkIndex + 1) / chunkCount;
+                    progressBar.value = .85 + audioProgress * .13;
+                    progressPercent.textContent = `${Math.round((.85 + audioProgress * .13) * 100)}%`;
+                    await yieldToBrowser();
+                }
+
+                audioSource.close();
+            }
+
             await output.finalize();
 
             if (cancelledByUser) return;
