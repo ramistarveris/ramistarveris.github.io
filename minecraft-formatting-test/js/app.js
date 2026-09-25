@@ -1805,6 +1805,7 @@
         }
         viewport.dataset.scene = scene;
         $('chatImageSelect').hidden = !show;
+        $('solidColorControl').hidden = scene !== 'solid';
         if (show)
             $('chatImageSelect').value = chatImageVariant;
         $('preview').tabIndex = show ? 0 : -1;

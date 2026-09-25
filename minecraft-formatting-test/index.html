@@ -63,6 +63,10 @@
                                 <option value="1">Image 1</option>
                                 <option value="2">Image 2</option>
                             </select>
+                            <label class="solid-color-control" hidden="" id="solidColorControl" title="Solid background color">
+                                <span>Color</span>
+                                <input aria-label="Solid background color" id="bgColor" type="color" value="#171d26"/>
+                            </label>
                             <select aria-label="Preview scale" id="scale" title="Preview scale">
                                 <option value="1">1×</option>
                                 <option selected="" value="2">2×</option>
@@ -120,9 +124,7 @@
                         <div class="setting-row">
                             <label class="field">Background opacity <input id="bgOpacity" max="100" min="0" type="range" value="55"/><output id="bgOpacityOut">55%</output></label>
                         </div>
-                        <div class="setting-row">
-                            <label class="field">Solid color <input id="bgColor" type="color" value="#171d26"/></label>
-                        </div>
+
                     </div>
                 </details>
                 <details id="parseSettings">

@@ -483,6 +483,25 @@ button,select,input {
   color: var(--text);
 }
 
+.solid-color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.solid-color-control input[type=color] {
+  width: 30px;
+  height: 26px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.solid-color-control:hover {
+  color: var(--text);
+}
+
 .font-badge {
   font-size: 11px;
   padding: 0;

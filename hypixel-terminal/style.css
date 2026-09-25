@@ -126,7 +126,7 @@ button {
 }
 
 .solver-grid {
-  --cell: calc(52px * var(--scale, 1));
+  --cell: calc(58px * var(--scale, 1));
   display: grid;
   grid-template-columns: repeat(var(--cols, 7), var(--cell));
   grid-auto-rows: var(--cell);
@@ -213,11 +213,13 @@ button {
 }
 
 .melody-runner {
+  z-index: 2;
   background: #68d85c;
   box-shadow: 0 0 calc(12px * var(--scale, 1)) rgba(104, 216, 92, .35);
 }
 
 .melody-target {
+  z-index: 1;
   background: var(--magenta);
 }
 
@@ -240,30 +242,15 @@ button {
   margin-top: 14px;
 }
 
-kbd,
 .back-button {
-  min-height: 34px;
+  min-height: 36px;
+  padding: 0 18px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #10141b;
   color: #cbd2df;
-}
-
-kbd {
-  display: inline-flex;
-  min-width: 48px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  border-bottom-width: 2px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.back-button {
-  padding: 0 14px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -292,6 +279,6 @@ kbd {
   }
 
   .solver-grid {
-    --cell: min(calc(52px * var(--scale, 1)), calc((100vw - 30px) / var(--cols, 7) - 4px));
+    --cell: min(calc(58px * var(--scale, 1)), calc((100vw - 30px) / var(--cols, 7) - 4px));
   }
 }

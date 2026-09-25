@@ -44,6 +44,7 @@
 
   let state = null;
   let serial = 0;
+  let hoveredInput = null;
 
   const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const pick = list => list[Math.floor(Math.random() * list.length)];
@@ -58,7 +59,7 @@
   }
 
   function applySize(value) {
-    const size = Math.max(70, Math.min(140, Number(value) || 100));
+    const size = Math.max(70, Math.min(200, Number(value) || 100));
     sizeRange.value = String(size);
     sizeValue.textContent = size + '%';
     grid.style.setProperty('--scale', String(size / 100));
@@ -109,13 +110,13 @@
   }
 
   function generateNumbers() {
-    const slots = [10,11,12,13,14,15,16,19,20,21,22,23,24,25];
-    const values = shuffle(Array.from({ length: 14 }, (_, i) => i + 1));
+    const slots = [10,11,12,13,14,19,20,21,22,23];
+    const values = shuffle(Array.from({ length: 10 }, (_, i) => i + 1));
     const cells = {};
     slots.forEach((slot, index) => {
       cells[slot] = { number: values[index], solved: false };
     });
-    return { cols: 7, rows: 2, slots, cells };
+    return { cols: 5, rows: 2, slots, cells };
   }
 
   function colorPrefixes(target) {
@@ -219,7 +220,7 @@
       stage: 0,
       current: rand(0, 4),
       phaseStartedAt: performance.now() - rand(0, 5) * 230,
-      stepMs: 230,
+      stepMs: 350,
       lastStep: -1
     };
   }
@@ -278,9 +279,27 @@
     }
   }
 
+  function armCell(cell, leftAction, rightAction = leftAction) {
+    cell.addEventListener('mouseenter', () => {
+      hoveredInput = { leftAction, rightAction, cell };
+    });
+    cell.addEventListener('mouseleave', () => {
+      if (hoveredInput?.cell === cell) hoveredInput = null;
+    });
+    cell.addEventListener('click', event => {
+      if (event.shiftKey && rightAction !== leftAction) rightAction();
+      else leftAction();
+    });
+    cell.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      rightAction();
+    });
+  }
+
   function render() {
     if (!state) return;
 
+    hoveredInput = null;
     grid.innerHTML = '';
     grid.style.setProperty('--cols', String(state.puzzle.cols));
 
@@ -299,8 +318,8 @@
         if (state.type === 'numbers') {
           const order = numberOrder.indexOf(slot);
           if (order >= 0 && order < 3) {
-            showSolverCell(cell, 'order-' + (order + 1), order + 1);
-            cell.addEventListener('click', () => handleNumbers(slot));
+            showSolverCell(cell, 'order-' + (order + 1), state.puzzle.cells[slot].number);
+            armCell(cell, () => handleNumbers(slot));
           }
         }
 
@@ -308,14 +327,14 @@
           const data = state.puzzle.cells[slot];
           if (data.target && !data.solved) {
             showSolverCell(cell);
-            cell.addEventListener('click', () => handleTarget(slot));
+            armCell(cell, () => handleTarget(slot));
           }
         }
 
         else if (state.type === 'redgreen') {
           if (state.puzzle.cells[slot].red) {
             showSolverCell(cell);
-            cell.addEventListener('click', () => handleRedGreen(slot));
+            armCell(cell, () => handleRedGreen(slot));
           }
         }
 
@@ -323,11 +342,7 @@
           const diff = rubixDiffs[slot];
           if (diff !== 0) {
             showSolverCell(cell, diff < 0 ? 'negative' : '', diff);
-            cell.addEventListener('click', event => handleRubix(slot, event.shiftKey ? 1 : 0));
-            cell.addEventListener('contextmenu', event => {
-              event.preventDefault();
-              handleRubix(slot, 1);
-            });
+            armCell(cell, () => handleRubix(slot, 0), () => handleRubix(slot, 1));
           }
         }
       }
@@ -347,21 +362,21 @@
           cell.classList.add('column');
         }
 
-        if (!state.finished && row === p.stage && col === p.current) {
-          const runner = document.createElement('span');
-          runner.className = 'melody-runner';
-          cell.appendChild(runner);
-        }
-
         if (row === p.stage && col === p.target) {
           const target = document.createElement('span');
           target.className = 'melody-target';
           cell.appendChild(target);
         }
 
+        if (!state.finished && row === p.stage && col === p.current) {
+          const runner = document.createElement('span');
+          runner.className = 'melody-runner';
+          cell.appendChild(runner);
+        }
+
         if (!state.finished && col === 5 && row === p.stage) {
           showSolverCell(cell);
-          cell.addEventListener('click', () => handleMelody(row));
+          armCell(cell, () => handleMelody(row));
         }
 
         grid.appendChild(cell);
@@ -468,11 +483,18 @@
 
   sizeRange.addEventListener('input', () => applySize(sizeRange.value));
   backButton.addEventListener('click', showSelection);
+  gameScreen.addEventListener('contextmenu', event => event.preventDefault());
 
   window.addEventListener('keydown', event => {
     if (event.key === 'Escape' && state) {
       event.preventDefault();
       showSelection();
+      return;
+    }
+
+    if (state && event.key.toLowerCase() === 'q' && hoveredInput) {
+      event.preventDefault();
+      hoveredInput.leftAction();
     }
   });
 
