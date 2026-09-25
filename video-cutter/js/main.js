@@ -2451,60 +2451,73 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
             progressLabel.textContent = 'フレームを書き出し中…';
 
-            for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+            for (const span of getTimelineSpans()) {
                 if (cancelledByUser) throw new Error('canceled');
 
-                const timelineTime = Math.min(total, frameIndex / fps);
-                const span = findSpanAtTimelineTime(timelineTime);
-                const clip = span?.clip;
+                const clip = span.clip;
+                const firstFrame = Math.max(
+                    0,
+                    Math.ceil(span.start * fps - 1e-7),
+                );
+                const endFrame = Math.min(
+                    frameCount,
+                    Math.ceil(span.end * fps - 1e-7),
+                );
 
-                let sample = null;
+                function* sourceTimestamps() {
+                    for (let frameIndex = firstFrame; frameIndex < endFrame; frameIndex++) {
+                        const timelineTime = frameIndex / fps;
+                        const offset = clamp(
+                            timelineTime - span.start,
+                            0,
+                            getClipDuration(clip),
+                        );
+                        yield clip.sourceStart + offset * clip.speed;
+                    }
+                }
 
-                if (span && clip) {
-                    const offset = clamp(
-                        timelineTime - span.start,
-                        0,
-                        getClipDuration(clip),
+                let frameIndex = firstFrame;
+
+                for await (const sample of videoSink.samplesAtTimestamps(sourceTimestamps())) {
+                    if (cancelledByUser) {
+                        sample?.close();
+                        throw new Error('canceled');
+                    }
+
+                    const timelineTime = frameIndex / fps;
+
+                    drawProjectFrame(
+                        context,
+                        sample,
+                        timelineTime,
+                        clip,
+                        width,
+                        height,
                     );
-                    const sourceTime = clip.sourceStart + offset * clip.speed;
-                    sample = await videoSink.getSample(sourceTime);
-                }
 
-                if (cancelledByUser) {
+                    const duration = Math.max(
+                        1 / Math.max(1, fps * 1000),
+                        Math.min(frameDuration, total - timelineTime),
+                    );
+
+                    await canvasSource.add(
+                        timelineTime,
+                        duration,
+                        { keyFrame: frameIndex % keyFrameEvery === 0 },
+                    );
+
                     sample?.close();
-                    throw new Error('canceled');
-                }
 
-                drawProjectFrame(
-                    context,
-                    sample,
-                    timelineTime,
-                    clip,
-                    width,
-                    height,
-                );
+                    const progress = (frameIndex + 1) / frameCount;
+                    const videoProgress = progress * .85;
+                    progressBar.value = videoProgress;
+                    progressPercent.textContent = `${Math.round(videoProgress * 100)}%`;
 
-                const timestamp = frameIndex / fps;
-                const duration = Math.max(
-                    1 / Math.max(1, fps * 1000),
-                    Math.min(frameDuration, total - timestamp),
-                );
+                    if (frameIndex % yieldInterval === 0) {
+                        await yieldToBrowser();
+                    }
 
-                await canvasSource.add(
-                    timestamp,
-                    duration,
-                    { keyFrame: frameIndex % keyFrameEvery === 0 },
-                );
-
-                sample?.close();
-
-                const progress = (frameIndex + 1) / frameCount;
-                const videoProgress = progress * .85;
-                progressBar.value = videoProgress;
-                progressPercent.textContent = `${Math.round(videoProgress * 100)}%`;
-
-                if (frameIndex % yieldInterval === 0) {
-                    await yieldToBrowser();
+                    frameIndex++;
                 }
             }
 
