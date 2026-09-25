@@ -1054,6 +1054,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         selectedType = 'video';
         selectedId = moving.id;
+        syncVideoLayer();
         renderTimeline();
         restorePlayheadAnchor(anchor, false);
         restartLayerAudioIfPlaying();
@@ -1095,6 +1096,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         if (type === 'video') {
             const index = clips.findIndex((clip) => clip.id === id);
             if (index >= 0) clips.splice(index, 1);
+            syncVideoLayer();
 
             if (!clips.length) {
                 selectedType = null;
@@ -1116,10 +1118,12 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             seekVideoTo(next.sourceStart);
         } else if (type === 'image') {
             imageClips = imageClips.filter((asset) => asset.id !== id);
+            removeItemFromLayers('image', id);
             selectedType = 'video';
             selectedId = activeClipId || clips[0]?.id || null;
         } else if (type === 'audio') {
             audioClips = audioClips.filter((asset) => asset.id !== id);
+            removeItemFromLayers('audio', id);
             selectedType = 'video';
             selectedId = activeClipId || clips[0]?.id || null;
         }
@@ -1255,6 +1259,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         });
 
         clips.splice(index, 1, left, right);
+        syncVideoLayer();
         selectedType = 'video';
         selectedId = right.id;
         activeClipId = right.id;
@@ -1308,9 +1313,15 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         clipIdCounter = 1;
         assetIdCounter = 1;
+        layerIdCounter = 1;
         clips = [createVideoClip(0, sourceDuration)];
         imageClips = [];
         audioClips = [];
+        layers = [];
+        createLayer(
+            clips.map((clip) => ({ type: 'video', id: clip.id })),
+            { baseVideo: true, atTop: false },
+        );
         selectedType = 'video';
         selectedId = clips[0].id;
         activeClipId = clips[0].id;
