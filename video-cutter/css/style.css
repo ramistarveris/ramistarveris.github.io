@@ -353,6 +353,11 @@ h2 {
     background: #050608;
 }
 
+.scene-stage > video {
+    position: absolute;
+    inset: 0;
+}
+
 video {
     display: block;
     width: 100%;
@@ -380,7 +385,6 @@ video {
 }
 
 .image-overlay-stage {
-    z-index: 4;
     overflow: hidden;
     pointer-events: none;
 }
@@ -1115,7 +1119,7 @@ progress::-moz-progress-bar { background: var(--accent); }
 @media (max-width: 580px) {
     .topbar { align-items: flex-start; }
     .top-actions { gap: 4px; }
-    .top-export-button { min-width: 94px; }
+    .project-export-button { min-width: 94px; }
 
     .file-row {
         align-items: flex-start;
