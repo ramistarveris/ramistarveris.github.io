@@ -1954,6 +1954,72 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return { width, height };
     }
 
+    function getExportFps() {
+        if (fpsSelect.value === 'source') {
+            return clamp(sourceFps || 30, 1, 120);
+        }
+
+        return clamp(Number(fpsSelect.value) || sourceFps || 30, 1, 120);
+    }
+
+    function formatFps(value) {
+        const rounded = Math.round(value * 100) / 100;
+        return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+    }
+
+    function updateSourceOutputLabels() {
+        const sourceOption = fpsSelect.querySelector('option[value="source"]');
+        if (sourceOption) {
+            sourceOption.textContent = `元動画 (${formatFps(sourceFps)} fps)`;
+        }
+
+        fileMeta.textContent = (
+            `${formatBytes(currentFile?.size || 0)} · ${sourceWidth}×${sourceHeight} · ${formatFps(sourceFps)}fps · ${formatTime(sourceDuration)}`
+        );
+    }
+
+    async function detectSourceFrameRate(file) {
+        if (!file) return;
+
+        const {
+            Input,
+            ALL_FORMATS,
+            BlobSource,
+        } = Mediabunny;
+
+        const input = new Input({
+            formats: ALL_FORMATS,
+            source: new BlobSource(file),
+        });
+
+        try {
+            const track = await input.getPrimaryVideoTrack();
+            if (!track) return;
+
+            const metrics = await track.computeFrameRateMetrics({
+                targetPacketCount: 256,
+            });
+
+            if (Number.isFinite(metrics.bestGuessFrameRate) && metrics.bestGuessFrameRate > 0) {
+                sourceFps = clamp(metrics.bestGuessFrameRate, 1, 120);
+            }
+        } catch (error) {
+            console.warn('Unable to detect source frame rate', error);
+        } finally {
+            input.dispose();
+            updateSourceOutputLabels();
+        }
+    }
+
+    async function yieldToBrowser() {
+        if (globalThis.scheduler?.yield) {
+            await globalThis.scheduler.yield();
+            return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
     function drawContained(source, context, width, height) {
         const sourceWidth = source.videoWidth || source.width || source.displayWidth || width;
         const sourceHeight = source.videoHeight || source.height || source.displayHeight || height;
