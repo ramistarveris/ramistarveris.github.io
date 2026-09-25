@@ -526,186 +526,290 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return button;
     }
 
-    function renderVideoTrack() {
-        clipTrack.replaceChildren();
-
-        clips.forEach((clip, index) => {
-            const clipElement = document.createElement('article');
-            clipElement.className = 'timeline-clip';
-            clipElement.dataset.clipId = clip.id;
-            clipElement.draggable = true;
-            clipElement.style.flexGrow = String(Math.max(getClipDuration(clip), MIN_CLIP_SECONDS));
-            clipElement.style.flexBasis = '0';
-
-            if (selectedType === 'video' && selectedId === clip.id) {
-                clipElement.classList.add('is-selected');
-            }
-            if (clip.muted || clip.audioDetached) {
-                clipElement.classList.add('is-muted');
-            }
-
-            const audioButton = document.createElement('button');
-            audioButton.className = 'clip-audio-button';
-            audioButton.type = 'button';
-            const audioOff = clip.muted || clip.audioDetached;
-            audioButton.title = audioOff ? '音声をオン' : '音声をミュート';
-            audioButton.setAttribute('aria-label', audioButton.title);
-            audioButton.innerHTML = `<iconify-icon icon="${audioOff ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
-            if (clip.audioDetached) {
-                audioButton.disabled = true;
-                audioButton.title = '音声は分離されています';
-            }
-
-            const body = document.createElement('div');
-            body.className = 'clip-body';
-
-            const name = document.createElement('span');
-            name.className = 'clip-name';
-            name.textContent = `Clip ${index + 1} · ${clip.speed}×`;
-
-            const time = document.createElement('span');
-            time.className = 'clip-time';
-            time.textContent = `${formatTime(clip.sourceStart)} – ${formatTime(clip.sourceEnd)}`;
-
-            const deleteButton = createDeleteButton(
-                'clip-delete-button',
-                'クリップを削除',
-                () => deleteElement('video', clip.id),
-            );
-
-            body.append(name, time);
-            clipElement.append(audioButton, body, deleteButton);
-
-            audioButton.addEventListener('pointerdown', (event) => event.stopPropagation());
-            audioButton.addEventListener('dragstart', (event) => event.preventDefault());
-            audioButton.addEventListener('click', (event) => {
-                event.stopPropagation();
-                toggleClipMute(clip.id);
-            });
-
-            clipElement.addEventListener('click', () => {
-                selectElement('video', clip.id);
-            });
-
-            clipElement.addEventListener('dragstart', (event) => {
-                draggedClipId = clip.id;
-                clipElement.classList.add('is-dragging');
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', clip.id);
-            });
-
-            clipElement.addEventListener('dragend', () => {
-                draggedClipId = null;
-                clearDropIndicators();
-                clipElement.classList.remove('is-dragging');
-            });
-
-            clipElement.addEventListener('dragover', (event) => {
-                if (!draggedClipId || draggedClipId === clip.id) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-                clearDropIndicators();
-
-                const rect = clipElement.getBoundingClientRect();
-                const before = event.clientX < rect.left + rect.width / 2;
-                showDropIndicator(clipElement, before);
-            });
-
-            clipElement.addEventListener('drop', (event) => {
-                if (!draggedClipId || draggedClipId === clip.id) return;
-                event.preventDefault();
-
-                const rect = clipElement.getBoundingClientRect();
-                const before = event.clientX < rect.left + rect.width / 2;
-                clearDropIndicators();
-                reorderClip(draggedClipId, clip.id, before);
-            });
-
-            clipTrack.appendChild(clipElement);
-        });
+    function getReferenceTrack() {
+        return layerStack.querySelector('.layer-track');
     }
 
-    function renderAssetTrack(track, assets, type) {
-        track.replaceChildren();
-        const total = getTimelineDuration();
+    function getAssetByType(type, id) {
+        if (type === 'image') return imageClips.find((asset) => asset.id === id) || null;
+        if (type === 'audio') return audioClips.find((asset) => asset.id === id) || null;
+        return clips.find((clip) => clip.id === id) || null;
+    }
+
+    function createItemBody(nameText, timeText) {
+        const body = document.createElement('div');
+        body.className = 'item-body';
+
+        const name = document.createElement('span');
+        name.className = 'item-name';
+        name.textContent = nameText;
+
+        const time = document.createElement('span');
+        time.className = 'item-time';
+        time.textContent = timeText;
+
+        body.append(name, time);
+        return body;
+    }
+
+    function createTrimHandle(edge, asset, element, track) {
+        const handle = document.createElement('span');
+        handle.className = `item-trim-handle ${edge}`;
+        handle.setAttribute('aria-hidden', 'true');
+
+        handle.addEventListener('pointerdown', (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            beginAssetResize(event, asset, edge, element, track);
+        });
+
+        return handle;
+    }
+
+    function renderVideoItem(clip, index, track, total) {
+        const span = getSpanByClipId(clip.id);
+        if (!span || !total) return;
+
+        const element = document.createElement('article');
+        element.className = 'layer-item video-item';
+        element.dataset.clipId = clip.id;
+        element.draggable = true;
+        element.style.left = `${span.start / total * 100}%`;
+        element.style.width = `${Math.max(.35, getClipDuration(clip) / total * 100)}%`;
+
+        if (selectedType === 'video' && selectedId === clip.id) {
+            element.classList.add('is-selected');
+        }
+        if (clip.muted || clip.audioDetached) {
+            element.classList.add('is-muted');
+        }
+
+        const audioButton = document.createElement('button');
+        audioButton.className = 'item-audio-button';
+        audioButton.type = 'button';
+        const audioOff = clip.muted || clip.audioDetached;
+        audioButton.title = audioOff ? '音声をオン' : '音声をミュート';
+        audioButton.innerHTML = `<iconify-icon icon="${audioOff ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
+        if (clip.audioDetached) {
+            audioButton.disabled = true;
+            audioButton.title = '音声は分離されています';
+        }
+
+        const body = createItemBody(
+            `Clip ${index + 1} · ${clip.speed}×`,
+            `${formatTime(clip.sourceStart)} – ${formatTime(clip.sourceEnd)}`,
+        );
+
+        const deleteButton = createDeleteButton(
+            'item-delete-button',
+            'クリップを削除',
+            () => deleteElement('video', clip.id),
+        );
+
+        element.append(audioButton, body, deleteButton);
+
+        audioButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+        audioButton.addEventListener('dragstart', (event) => event.preventDefault());
+        audioButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleClipMute(clip.id);
+        });
+
+        element.addEventListener('click', () => selectElement('video', clip.id));
+
+        element.addEventListener('dragstart', (event) => {
+            draggedClipId = clip.id;
+            element.classList.add('is-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', clip.id);
+        });
+
+        element.addEventListener('dragend', () => {
+            draggedClipId = null;
+            clearDropIndicators();
+            element.classList.remove('is-dragging');
+        });
+
+        element.addEventListener('dragover', (event) => {
+            if (!draggedClipId || draggedClipId === clip.id) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            clearDropIndicators();
+
+            const rect = element.getBoundingClientRect();
+            const before = event.clientX < rect.left + rect.width / 2;
+            showDropIndicator(element, before);
+        });
+
+        element.addEventListener('drop', (event) => {
+            if (!draggedClipId || draggedClipId === clip.id) return;
+            event.preventDefault();
+
+            const rect = element.getBoundingClientRect();
+            const before = event.clientX < rect.left + rect.width / 2;
+            clearDropIndicators();
+            reorderClip(draggedClipId, clip.id, before);
+        });
+
+        track.appendChild(element);
+    }
+
+    function renderAssetItem(asset, type, track, total) {
         if (!total) return;
 
-        assets.forEach((asset) => {
-            const element = document.createElement('article');
-            element.className = `asset-clip ${type}-clip`;
-            element.dataset.assetId = asset.id;
-            element.style.left = `${clamp(asset.start / total * 100, 0, 100)}%`;
-            element.style.width = `${clamp(asset.duration / total * 100, .5, 100)}%`;
+        const element = document.createElement('article');
+        element.className = `layer-item ${type}-item`;
+        element.dataset.assetId = asset.id;
+        element.style.left = `${clamp(asset.start / total * 100, 0, 100)}%`;
+        element.style.width = `${clamp(asset.duration / total * 100, .35, 100)}%`;
 
-            if (selectedType === type && selectedId === asset.id) {
-                element.classList.add('is-selected');
-            }
+        if (selectedType === type && selectedId === asset.id) {
+            element.classList.add('is-selected');
+        }
+        if (asset.muted) {
+            element.classList.add('is-muted');
+        }
 
-            if (type === 'image') {
-                const img = document.createElement('img');
-                img.className = 'asset-thumb';
-                img.src = asset.url;
-                img.alt = '';
-                element.appendChild(img);
-            } else {
-                const muteButton = document.createElement('button');
-                muteButton.className = 'asset-mute';
-                muteButton.type = 'button';
-                muteButton.title = asset.muted ? '音声をオン' : '音声をミュート';
-                muteButton.innerHTML = `<iconify-icon icon="${asset.muted ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
-                muteButton.addEventListener('pointerdown', (event) => event.stopPropagation());
-                muteButton.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    pushUndoState();
-                    asset.muted = !asset.muted;
-                    renderTimeline();
-                    restartLayerAudioIfPlaying();
-                });
-                element.appendChild(muteButton);
+        element.appendChild(createTrimHandle('start', asset, element, track));
 
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.classList.add('waveform');
-                svg.setAttribute('viewBox', '0 0 100 40');
-                svg.setAttribute('preserveAspectRatio', 'none');
-
-                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-                polyline.setAttribute(
-                    'points',
-                    buildWaveformPoints(asset.buffer, asset.sourceStart, asset.sourceEnd),
-                );
-                svg.appendChild(polyline);
-                element.appendChild(svg);
-            }
-
-            const name = document.createElement('span');
-            name.className = 'asset-name';
-            name.textContent = asset.name;
-            element.appendChild(name);
-
-            element.appendChild(createDeleteButton(
-                'asset-delete',
-                '要素を削除',
-                () => deleteElement(type, asset.id),
-            ));
-
-            element.addEventListener('pointerdown', (event) => {
-                if (event.button !== 0 || event.target.closest('button')) return;
-                selectElement(type, asset.id);
-                beginAssetDrag(event, asset, element);
+        if (type === 'image') {
+            const img = document.createElement('img');
+            img.className = 'item-thumb';
+            img.src = asset.url;
+            img.alt = '';
+            element.appendChild(img);
+        } else {
+            const muteButton = document.createElement('button');
+            muteButton.className = 'item-mute-button';
+            muteButton.type = 'button';
+            muteButton.title = asset.muted ? '音声をオン' : '音声をミュート';
+            muteButton.innerHTML = `<iconify-icon icon="${asset.muted ? 'mdi:volume-off' : 'mdi:volume-high'}"></iconify-icon>`;
+            muteButton.addEventListener('pointerdown', (event) => event.stopPropagation());
+            muteButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                pushUndoState();
+                asset.muted = !asset.muted;
+                renderTimeline();
+                restartLayerAudioIfPlaying();
             });
+            element.appendChild(muteButton);
 
-            track.appendChild(element);
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.classList.add('waveform');
+            svg.setAttribute('viewBox', '0 0 100 40');
+            svg.setAttribute('preserveAspectRatio', 'none');
+
+            const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline.setAttribute(
+                'points',
+                buildWaveformPoints(asset.buffer, asset.sourceStart, asset.sourceEnd),
+            );
+            svg.appendChild(polyline);
+            element.appendChild(svg);
+        }
+
+        const body = createItemBody(
+            asset.name,
+            `${formatTime(asset.start)} – ${formatTime(asset.start + asset.duration)}`,
+        );
+        element.appendChild(body);
+
+        element.appendChild(createDeleteButton(
+            'item-delete-button',
+            '要素を削除',
+            () => deleteElement(type, asset.id),
+        ));
+
+        element.appendChild(createTrimHandle('end', asset, element, track));
+
+        element.addEventListener('pointerdown', (event) => {
+            if (
+                event.button !== 0
+                || event.target.closest('button, .item-trim-handle')
+            ) {
+                return;
+            }
+
+            selectElement(type, asset.id);
+            beginAssetDrag(event, asset, element, track);
         });
+
+        track.appendChild(element);
+    }
+
+    function renderLayer(layer, index, total) {
+        const row = document.createElement('div');
+        row.className = 'layer-row';
+        row.dataset.layerId = layer.id;
+
+        const label = document.createElement('div');
+        label.className = 'layer-label';
+        label.draggable = true;
+        label.title = 'ドラッグでレイヤー順を変更';
+        label.innerHTML = `<iconify-icon icon="mdi:drag"></iconify-icon><span>Layer ${index + 1}</span>`;
+
+        const track = document.createElement('div');
+        track.className = 'layer-track';
+
+        if (layer.baseVideo) {
+            track.classList.add('video-layer-track');
+        }
+
+        layer.items.forEach((item) => {
+            if (item.type === 'video') {
+                const clip = clips.find((candidate) => candidate.id === item.id);
+                if (clip) renderVideoItem(clip, clips.indexOf(clip), track, total);
+            } else {
+                const asset = getAssetByType(item.type, item.id);
+                if (asset) renderAssetItem(asset, item.type, track, total);
+            }
+        });
+
+        label.addEventListener('dragstart', (event) => {
+            draggedLayerId = layer.id;
+            row.classList.add('is-layer-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', layer.id);
+        });
+
+        label.addEventListener('dragend', () => {
+            draggedLayerId = null;
+            clearLayerDropIndicators();
+            row.classList.remove('is-layer-dragging');
+        });
+
+        row.addEventListener('dragover', (event) => {
+            if (!draggedLayerId || draggedLayerId === layer.id || draggedClipId) return;
+            event.preventDefault();
+            clearLayerDropIndicators();
+
+            const rect = row.getBoundingClientRect();
+            const before = event.clientY < rect.top + rect.height / 2;
+            row.classList.add(before ? 'is-layer-drop-before' : 'is-layer-drop-after');
+        });
+
+        row.addEventListener('drop', (event) => {
+            if (!draggedLayerId || draggedLayerId === layer.id || draggedClipId) return;
+            event.preventDefault();
+
+            const rect = row.getBoundingClientRect();
+            const before = event.clientY < rect.top + rect.height / 2;
+            reorderLayer(draggedLayerId, layer.id, before);
+        });
+
+        row.append(label, track);
+        layerStack.appendChild(row);
     }
 
     function renderTimeline() {
         const total = getTimelineDuration();
-        renderVideoTrack();
-        renderAssetTrack(imageTrack, imageClips, 'image');
-        renderAssetTrack(audioTrack, audioClips, 'audio');
+        syncVideoLayer();
+        layerStack.replaceChildren();
+
+        layers.forEach((layer, index) => renderLayer(layer, index, total));
 
         clipCountLabel.textContent = (
-            `${clips.length} video · ${imageClips.length} image · ${audioClips.length} audio · ${formatTime(total)}`
+            `${layers.length} layers · ${clips.length + imageClips.length + audioClips.length} items · ${formatTime(total)}`
         );
         exportButton.disabled = Boolean(exportJob) || !currentFile || !clips.length;
         renderRuler();
@@ -714,8 +818,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         updatePreviewScene();
     }
 
-    function beginAssetDrag(event, asset, element) {
-        const track = asset.type === 'image' ? imageTrack : audioTrack;
+    function beginAssetDrag(event, asset, element, track) {
         const rect = track.getBoundingClientRect();
         const total = getTimelineDuration();
         if (!rect.width || !total) return;
@@ -760,23 +863,143 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         element.addEventListener('pointercancel', finish);
     }
 
+    function beginAssetResize(event, asset, edge, element, track) {
+        const total = getTimelineDuration();
+        const rect = track.getBoundingClientRect();
+        if (!total || !rect.width) return;
+
+        const pointerId = event.pointerId;
+        const originalStart = asset.start;
+        const originalDuration = asset.duration;
+        const originalEnd = originalStart + originalDuration;
+        const originalSourceStart = asset.sourceStart ?? 0;
+        const originalSourceEnd = asset.sourceEnd ?? originalDuration;
+        const speed = asset.speed || 1;
+        let changed = false;
+        let historyPushed = false;
+
+        element.setPointerCapture(pointerId);
+
+        const move = (moveEvent) => {
+            const pointerTime = clamp(
+                (moveEvent.clientX - rect.left) / rect.width * total,
+                0,
+                total,
+            );
+
+            if (!historyPushed) {
+                pushUndoState();
+                historyPushed = true;
+            }
+
+            changed = true;
+
+            if (edge === 'start') {
+                if (asset.type === 'audio') {
+                    const maxExtendLeft = originalSourceStart / speed;
+                    const minStart = Math.max(0, originalStart - maxExtendLeft);
+                    const nextStart = clamp(pointerTime, minStart, originalEnd - MIN_CLIP_SECONDS);
+                    const delta = nextStart - originalStart;
+
+                    asset.start = nextStart;
+                    asset.sourceStart = clamp(
+                        originalSourceStart + delta * speed,
+                        0,
+                        originalSourceEnd - MIN_CLIP_SECONDS,
+                    );
+                    asset.duration = originalEnd - nextStart;
+                } else {
+                    const nextStart = clamp(pointerTime, 0, originalEnd - MIN_CLIP_SECONDS);
+                    asset.start = nextStart;
+                    asset.duration = originalEnd - nextStart;
+                }
+            } else if (asset.type === 'audio') {
+                const bufferDuration = asset.buffer?.duration ?? originalSourceEnd;
+                const maxExtendRight = Math.max(0, bufferDuration - originalSourceEnd) / speed;
+                const maxEnd = Math.min(total, originalEnd + maxExtendRight);
+                const nextEnd = clamp(pointerTime, originalStart + MIN_CLIP_SECONDS, maxEnd);
+                const delta = nextEnd - originalEnd;
+
+                asset.sourceEnd = clamp(
+                    originalSourceEnd + delta * speed,
+                    originalSourceStart + MIN_CLIP_SECONDS,
+                    bufferDuration,
+                );
+                asset.duration = nextEnd - originalStart;
+            } else {
+                const nextEnd = clamp(pointerTime, originalStart + MIN_CLIP_SECONDS, total);
+                asset.duration = nextEnd - originalStart;
+            }
+
+            element.style.left = `${asset.start / total * 100}%`;
+            element.style.width = `${Math.max(.35, asset.duration / total * 100)}%`;
+            updatePreviewScene();
+        };
+
+        const finish = () => {
+            element.removeEventListener('pointermove', move);
+            element.removeEventListener('pointerup', finish);
+            element.removeEventListener('pointercancel', finish);
+
+            if (changed) {
+                renderTimeline();
+                restartLayerAudioIfPlaying();
+            }
+        };
+
+        element.addEventListener('pointermove', move);
+        element.addEventListener('pointerup', finish);
+        element.addEventListener('pointercancel', finish);
+    }
+
     function showDropIndicator(targetElement, before) {
-        const trackRect = clipTrack.getBoundingClientRect();
+        const track = targetElement.closest('.layer-track');
+        if (!track) return;
+
+        const trackRect = track.getBoundingClientRect();
         const targetRect = targetElement.getBoundingClientRect();
         const targetX = before
             ? targetRect.left - trackRect.left
             : targetRect.right - trackRect.left;
 
-        clipTrack.style.setProperty(
+        track.style.setProperty(
             '--drop-indicator-x',
             `${clamp(targetX, 0, trackRect.width)}px`,
         );
-        clipTrack.classList.add('is-reorder-target');
+        track.classList.add('is-reorder-target');
     }
 
     function clearDropIndicators() {
-        clipTrack.classList.remove('is-reorder-target');
-        clipTrack.style.removeProperty('--drop-indicator-x');
+        layerStack.querySelectorAll('.layer-track.is-reorder-target').forEach((track) => {
+            track.classList.remove('is-reorder-target');
+            track.style.removeProperty('--drop-indicator-x');
+        });
+    }
+
+    function clearLayerDropIndicators() {
+        layerStack.querySelectorAll('.is-layer-drop-before, .is-layer-drop-after').forEach((row) => {
+            row.classList.remove('is-layer-drop-before', 'is-layer-drop-after');
+        });
+    }
+
+    function reorderLayer(movingId, targetId, before) {
+        const movingIndex = layers.findIndex((layer) => layer.id === movingId);
+        if (movingIndex < 0) return;
+
+        pushUndoState();
+        const [moving] = layers.splice(movingIndex, 1);
+        let targetIndex = layers.findIndex((layer) => layer.id === targetId);
+
+        if (targetIndex < 0) {
+            layers.push(moving);
+        } else {
+            if (!before) targetIndex += 1;
+            layers.splice(targetIndex, 0, moving);
+        }
+
+        draggedLayerId = null;
+        clearLayerDropIndicators();
+        renderTimeline();
     }
 
     function capturePlayheadAnchor() {
