@@ -31,6 +31,10 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     const fpsSelect = document.getElementById('fpsSelect');
     const snapshotFormat = document.getElementById('snapshotFormat');
     const snapshotButton = document.getElementById('snapshotButton');
+    const exportModal = document.getElementById('exportModal');
+    const exportModalClose = document.getElementById('exportModalClose');
+    const exportModalCancel = document.getElementById('exportModalCancel');
+    const exportConfirmButton = document.getElementById('exportConfirmButton');
 
     const selectionNote = document.getElementById('selectionNote');
     const videoClipControls = document.getElementById('videoClipControls');
@@ -466,12 +470,34 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         if (!total) return;
 
-        for (let i = 0; i <= 4; i++) {
-            const ratio = i / 4;
+        const preferredMajor = total <= 10 ? 1 : total <= 30 ? 5 : total <= 120 ? 10 : 30;
+        const majorStep = Math.max(preferredMajor, total / 8);
+        const normalizedMajor = majorStep <= 1 ? 1 : majorStep <= 2 ? 2 : majorStep <= 5 ? 5 : majorStep <= 10 ? 10 : majorStep <= 15 ? 15 : majorStep <= 30 ? 30 : 60;
+        const minorStep = normalizedMajor / 5;
+
+        for (let time = 0; time <= total + EPSILON; time += minorStep) {
+            const ratio = clamp(time / total, 0, 1);
+            const major = Math.abs((time / normalizedMajor) - Math.round(time / normalizedMajor)) < .001;
+
+            const tick = document.createElement('span');
+            tick.className = `ruler-tick${major ? ' major' : ''}`;
+            tick.style.left = `${ratio * 100}%`;
+            timelineRuler.appendChild(tick);
+
+            if (major || time < EPSILON) {
+                const label = document.createElement('span');
+                label.className = 'ruler-label';
+                label.style.left = `${ratio * 100}%`;
+                label.textContent = formatTime(time);
+                timelineRuler.appendChild(label);
+            }
+        }
+
+        if (total % normalizedMajor > EPSILON) {
             const label = document.createElement('span');
             label.className = 'ruler-label';
-            label.style.left = `${ratio * 100}%`;
-            label.textContent = formatTime(total * ratio);
+            label.style.left = '100%';
+            label.textContent = formatTime(total);
             timelineRuler.appendChild(label);
         }
     }
@@ -1595,7 +1621,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return sourceAudioDecodePromise;
     }
 
-    async function addImageFile(file) {
+    async function addImageFile(file, requestedStart = logicalTime) {
         if (!file || !file.type.startsWith('image/') || !getTimelineDuration()) return;
 
         try {
@@ -1604,7 +1630,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             assetObjectUrls.add(url);
 
             const total = getTimelineDuration();
-            const start = clamp(logicalTime, 0, Math.max(0, total - .1));
+            const start = clamp(requestedStart, 0, Math.max(0, total - .1));
             const duration = Math.max(.1, Math.min(5, total - start));
 
             pushUndoState();
@@ -1623,6 +1649,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 width: 0.38,
             };
 
+            clampImageInsideStage(asset);
             imageClips.push(asset);
             addLayerForItem('image', asset.id);
             selectedType = 'image';
@@ -1640,13 +1667,13 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return context.decodeAudioData(arrayBuffer.slice(0));
     }
 
-    async function addAudioFile(file) {
+    async function addAudioFile(file, requestedStart = logicalTime) {
         if (!file || !getTimelineDuration()) return;
 
         try {
             const buffer = await decodeExternalAudio(file);
             const total = getTimelineDuration();
-            const start = clamp(logicalTime, 0, Math.max(0, total - .1));
+            const start = clamp(requestedStart, 0, Math.max(0, total - .1));
             const duration = Math.max(.1, Math.min(buffer.duration, total - start));
 
             pushUndoState();
@@ -1792,6 +1819,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
     }
 
+    function getImageStageBounds(asset, width = asset.width ?? .38) {
+        const stageRect = imageOverlayStage.getBoundingClientRect();
+        const bitmap = asset.bitmap;
+        const aspect = bitmap ? bitmap.height / Math.max(1, bitmap.width) : 1;
+        const height = width * (stageRect.width / Math.max(1, stageRect.height)) * aspect;
+        return {
+            halfW: Math.min(.5, width / 2),
+            halfH: Math.min(.5, height / 2),
+            maxWidth: Math.max(.05, Math.min(1, 1 / Math.max(.0001, (stageRect.width / Math.max(1, stageRect.height)) * aspect))),
+        };
+    }
+
+    function clampImageInsideStage(asset) {
+        const bounds = getImageStageBounds(asset);
+        asset.width = clamp(asset.width ?? .38, .05, Math.min(1, bounds.maxWidth));
+        const next = getImageStageBounds(asset, asset.width);
+        asset.x = clamp(asset.x ?? .5, next.halfW, 1 - next.halfW);
+        asset.y = clamp(asset.y ?? .5, next.halfH, 1 - next.halfH);
+    }
+
     function beginImageStageTransform(event, asset, mode, wrapper) {
         if (event.button !== 0) return;
 
@@ -1812,6 +1859,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const originalX = asset.x ?? 0.5;
         const originalY = asset.y ?? 0.5;
         const originalWidth = asset.width ?? 0.38;
+        const handle = mode === 'move' ? null : mode;
 
         wrapper.setPointerCapture(pointerId);
 
@@ -1820,14 +1868,25 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             const dy = moveEvent.clientY - startY;
 
             if (mode === 'move') {
-                asset.x = clamp(originalX + dx / stageRect.width, 0, 1);
-                asset.y = clamp(originalY + dy / stageRect.height, 0, 1);
+                const bounds = getImageStageBounds(asset);
+                asset.x = clamp(originalX + dx / stageRect.width, bounds.halfW, 1 - bounds.halfW);
+                asset.y = clamp(originalY + dy / stageRect.height, bounds.halfH, 1 - bounds.halfH);
             } else {
-                asset.width = clamp(
-                    originalWidth + dx / stageRect.width * 1.6,
-                    0.05,
-                    1.5,
-                );
+                const horizontalSign = handle.includes('e') ? 1 : -1;
+                const verticalSign = handle.includes('s') ? 1 : -1;
+                const deltaX = horizontalSign * dx / stageRect.width;
+                const deltaY = verticalSign * dy / stageRect.height;
+                const delta = Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
+                const maxWidth = Math.min(1, getImageStageBounds(asset, originalWidth).maxWidth);
+                asset.width = clamp(originalWidth + delta * 2, .05, maxWidth);
+
+                const originalBounds = getImageStageBounds(asset, originalWidth);
+                const nextBounds = getImageStageBounds(asset, asset.width);
+                const anchorX = originalX - horizontalSign * originalBounds.halfW;
+                const anchorY = originalY - verticalSign * originalBounds.halfH;
+                asset.x = anchorX + horizontalSign * nextBounds.halfW;
+                asset.y = anchorY + verticalSign * nextBounds.halfH;
+                clampImageInsideStage(asset);
             }
 
             wrapper.style.left = `${asset.x * 100}%`;
@@ -1839,6 +1898,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             wrapper.removeEventListener('pointermove', move);
             wrapper.removeEventListener('pointerup', finish);
             wrapper.removeEventListener('pointercancel', finish);
+            clampImageInsideStage(asset);
             updatePreviewScene();
         };
 
@@ -1881,13 +1941,15 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 });
 
                 if (selectedType === 'image' && selectedId === asset.id) {
-                    const resize = document.createElement('span');
-                    resize.className = 'scene-image-resize';
-                    resize.title = 'ドラッグでリサイズ';
-                    resize.addEventListener('pointerdown', (event) => {
-                        beginImageStageTransform(event, asset, 'resize', wrapper);
+                    ['nw', 'ne', 'sw', 'se'].forEach((corner) => {
+                        const resize = document.createElement('span');
+                        resize.className = `scene-image-resize ${corner}`;
+                        resize.title = 'ドラッグでリサイズ';
+                        resize.addEventListener('pointerdown', (event) => {
+                            beginImageStageTransform(event, asset, corner, wrapper);
+                        });
+                        wrapper.appendChild(resize);
                     });
-                    wrapper.appendChild(resize);
                 }
 
                 imageOverlayStage.appendChild(wrapper);
@@ -1973,6 +2035,21 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         return clamp(Number(fpsSelect.value) || sourceFps || 30, 1, 120);
     }
 
+    function normalizeSourceFps(value) {
+        if (!Number.isFinite(value) || value <= 0) return 30;
+        const standards = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 90, 100, 119.88, 120];
+        const nearest = standards.reduce((best, candidate) => (
+            Math.abs(candidate - value) < Math.abs(best - value) ? candidate : best
+        ), standards[0]);
+        const tolerance = Math.max(.65, nearest * .015);
+        const normalized = Math.abs(nearest - value) <= tolerance ? nearest : Math.round(value);
+        if (Math.abs(normalized - 23.976) < .01) return 24;
+        if (Math.abs(normalized - 29.97) < .01) return 30;
+        if (Math.abs(normalized - 59.94) < .01) return 60;
+        if (Math.abs(normalized - 119.88) < .02) return 120;
+        return clamp(normalized, 1, 120);
+    }
+
     function formatFps(value) {
         const rounded = Math.round(value * 100) / 100;
         return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
@@ -1981,7 +2058,12 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     function updateSourceOutputLabels() {
         const sourceOption = fpsSelect.querySelector('option[value="source"]');
         if (sourceOption) {
-            sourceOption.textContent = `元動画 (${formatFps(sourceFps)} fps)`;
+            sourceOption.textContent = `${formatFps(sourceFps)} (元動画)`;
+        }
+
+        const resolutionOption = resolutionSelect.querySelector('option[value="source"]');
+        if (resolutionOption) {
+            resolutionOption.textContent = `${sourceWidth}×${sourceHeight} (元動画)`;
         }
 
         fileMeta.textContent = (
@@ -2012,7 +2094,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             });
 
             if (Number.isFinite(metrics.bestGuessFrameRate) && metrics.bestGuessFrameRate > 0) {
-                sourceFps = clamp(metrics.bestGuessFrameRate, 1, 120);
+                sourceFps = normalizeSourceFps(metrics.bestGuessFrameRate);
             }
         } catch (error) {
             console.warn('Unable to detect source frame rate', error);
@@ -2349,7 +2431,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         formatBadge.hidden = false;
         progressBar.value = 0;
         progressPercent.textContent = '0%';
-        progressLabel.textContent = '書き出しを準備中…';
+        progressLabel.textContent = 'エクスポートを準備中…';
         setStatus('');
         cancelledByUser = false;
 
@@ -2449,7 +2531,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             const keyFrameEvery = Math.max(1, Math.round(fps * 2));
             const yieldInterval = width * height >= 2560 * 1440 ? 1 : 3;
 
-            progressLabel.textContent = 'フレームを書き出し中…';
+            progressLabel.textContent = 'フレームをエクスポート中…';
 
             for (const span of getTimelineSpans()) {
                 if (cancelledByUser) throw new Error('canceled');
@@ -2526,7 +2608,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             if (audioSource) {
                 const audioChunkSeconds = 5;
                 const chunkCount = Math.ceil(total / audioChunkSeconds);
-                progressLabel.textContent = '音声を書き出し中…';
+                progressLabel.textContent = '音声をエクスポート中…';
 
                 for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
                     if (cancelledByUser) throw new Error('canceled');
@@ -2576,13 +2658,13 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             anchor.remove();
             setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
 
-            setStatus(`書き出し完了 · ${formatBytes(blob.size)}`, 'success');
+            setStatus(`エクスポート完了 · ${formatBytes(blob.size)}`, 'success');
             progressLabel.textContent = '完了';
         } catch (error) {
             if (!cancelledByUser) {
                 console.error(error);
                 const message = error instanceof Error ? error.message : String(error);
-                setStatus(`書き出しに失敗しました: ${message}`, 'error');
+                setStatus(`エクスポートに失敗しました: ${message}`, 'error');
                 progressLabel.textContent = '失敗';
             }
         } finally {
@@ -2634,6 +2716,62 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
     dropZone.addEventListener('drop', (event) => {
         const [file] = event.dataTransfer?.files || [];
         if (file) loadFile(file);
+    });
+
+    function getTimelineDropTime(event) {
+        const track = getReferenceTrack();
+        if (!track) return logicalTime;
+        const rect = track.getBoundingClientRect();
+        if (!rect.width) return logicalTime;
+        return clamp((event.clientX - rect.left) / rect.width * getTimelineDuration(), 0, getTimelineDuration());
+    }
+
+    function clearTimelineFileDropMarker() {
+        timelinePane.classList.remove('timeline-drop-active');
+        timelinePane.querySelector('.timeline-drop-marker')?.remove();
+    }
+
+    function showTimelineFileDropMarker(event) {
+        clearTimelineFileDropMarker();
+        const track = getReferenceTrack();
+        if (!track) return;
+        const trackRect = track.getBoundingClientRect();
+        const paneRect = timelinePane.getBoundingClientRect();
+        const marker = document.createElement('span');
+        marker.className = 'timeline-drop-marker';
+        marker.style.left = `${clamp(event.clientX - paneRect.left, trackRect.left - paneRect.left, trackRect.right - paneRect.left)}px`;
+        timelinePane.appendChild(marker);
+        timelinePane.classList.add('timeline-drop-active');
+    }
+
+    timelinePane.addEventListener('dragover', (event) => {
+        if (!event.dataTransfer?.types?.includes('Files')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        showTimelineFileDropMarker(event);
+    });
+
+    timelinePane.addEventListener('dragleave', (event) => {
+        if (!timelinePane.contains(event.relatedTarget)) clearTimelineFileDropMarker();
+    });
+
+    timelinePane.addEventListener('drop', async (event) => {
+        const files = [...(event.dataTransfer?.files || [])];
+        if (!files.length) return;
+        event.preventDefault();
+        const requestedStart = getTimelineDropTime(event);
+        clearTimelineFileDropMarker();
+
+        for (const file of files) {
+            if (file.type.startsWith('image/')) {
+                await addImageFile(file, requestedStart);
+            } else if (file.type.startsWith('audio/')) {
+                await addAudioFile(file, requestedStart);
+            } else if (file.type.startsWith('video/') || /\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name)) {
+                if (!currentFile) loadFile(file);
+                else setStatus('動画の追加は現在のメイン動画を置き換える操作になります。', 'error');
+            }
+        }
     });
 
     replaceButton.addEventListener('click', () => fileInput.click());
@@ -2959,7 +3097,26 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         }
     });
 
-    exportButton.addEventListener('click', exportEditedTimeline);
+    function openExportModal() {
+        if (!currentFile || !clips.length || exportJob) return;
+        updateSourceOutputLabels();
+        exportModal.hidden = false;
+        exportConfirmButton.focus();
+    }
+
+    function closeExportModal() {
+        if (exportJob) return;
+        exportModal.hidden = true;
+    }
+
+    exportButton.addEventListener('click', openExportModal);
+    exportModalClose.addEventListener('click', closeExportModal);
+    exportModalCancel.addEventListener('click', closeExportModal);
+    exportModal.querySelector('[data-export-close]').addEventListener('click', closeExportModal);
+    exportConfirmButton.addEventListener('click', async () => {
+        exportModal.hidden = true;
+        await exportEditedTimeline();
+    });
 
     cancelButton.addEventListener('click', async () => {
         if (!exportJob) return;
@@ -2970,7 +3127,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
         try {
             await exportJob.cancel();
-            setStatus('書き出しをキャンセルしました。');
+            setStatus('エクスポートをキャンセルしました。');
             progressLabel.textContent = 'キャンセル済み';
         } catch (error) {
             console.error(error);
