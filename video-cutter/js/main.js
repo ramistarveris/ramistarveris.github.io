@@ -1168,7 +1168,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
         const trackRect = referenceTrack?.getBoundingClientRect();
 
         if (!total || !workspaceRect.width || !trackRect?.width) {
-            playhead.style.left = '82px';
+            playhead.style.left = '104px';
             playheadTimeLabel.textContent = '0:00.00';
             updatePreviewScene();
             return;
