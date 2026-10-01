@@ -64,62 +64,6 @@
                 </section>
 
                 <aside class="panel control-pane">
-                    <section class="inspector-section project-settings" aria-labelledby="projectTitle">
-                        <div class="control-head project-control-head">
-                            <div>
-                                <p class="eyebrow">PROJECT</p>
-                                <h2 id="projectTitle">出力設定</h2>
-                            </div>
-                            <div class="project-head-actions">
-                                <button id="cancelButton" type="button" hidden>キャンセル</button>
-                                <button class="primary-button project-export-button" id="exportButton" type="button" disabled>
-                                    <iconify-icon icon="mdi:export"></iconify-icon>
-                                    書き出す
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="setting-grid">
-                            <label class="setting-field">
-                                <span>解像度</span>
-                                <select id="resolutionSelect">
-                                    <option value="source" selected>元動画</option>
-                                    <option value="3840x2160">3840×2160 (4K)</option>
-                                    <option value="2560x1440">2560×1440</option>
-                                    <option value="1920x1080">1920×1080</option>
-                                    <option value="1280x720">1280×720</option>
-                                    <option value="854x480">854×480</option>
-                                    <option value="custom">カスタム</option>
-                                </select>
-                            </label>
-                            <div class="custom-resolution" id="customResolution" hidden>
-                                <input id="exportWidthInput" type="number" min="16" max="7680" step="2" value="1920" aria-label="出力幅">
-                                <span>×</span>
-                                <input id="exportHeightInput" type="number" min="16" max="4320" step="2" value="1080" aria-label="出力高さ">
-                            </div>
-                            <label class="setting-field">
-                                <span>FPS</span>
-                                <select id="fpsSelect">
-                                    <option value="source" selected>元動画</option>
-                                    <option value="24">24</option>
-                                    <option value="30">30</option>
-                                    <option value="60">60</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <div class="snapshot-row">
-                            <select id="snapshotFormat" aria-label="静止画形式">
-                                <option value="png">PNG</option>
-                                <option value="jpeg">JPG / JPEG</option>
-                            </select>
-                            <button id="snapshotButton" type="button">
-                                <iconify-icon icon="mdi:camera-outline"></iconify-icon>
-                                現在のシーンを保存
-                            </button>
-                        </div>
-                    </section>
-
                     <section class="inspector-section clip-settings" aria-labelledby="trimTitle">
                         <div class="control-head">
                             <div>
@@ -230,11 +174,25 @@
                                 <iconify-icon icon="mdi:music-note-plus"></iconify-icon>
                                 <span>音声</span>
                             </button>
+                            <div class="timeline-snapshot-control">
+                                <select id="snapshotFormat" aria-label="静止画形式">
+                                    <option value="png">PNG</option>
+                                    <option value="jpeg">JPG / JPEG</option>
+                                </select>
+                                <button class="timeline-tool-button" id="snapshotButton" type="button">
+                                    <iconify-icon icon="mdi:camera-outline"></iconify-icon>
+                                    <span>現在のシーンを保存</span>
+                                </button>
+                            </div>
                             <span class="shortcut-hint">Ctrl+← カット · Ctrl+Z/Y · Del · Space</span>
                         </div>
                         <div class="timeline-toolbar-right">
                             <span id="clipCountLabel">1 clip</span>
                             <strong id="playheadTimeLabel">0:00.00</strong>
+                            <button class="primary-button timeline-export-button" id="exportButton" type="button" disabled>
+                                <iconify-icon icon="mdi:export"></iconify-icon>
+                                エクスポート
+                            </button>
                         </div>
                     </div>
 
@@ -255,6 +213,60 @@
 
     <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
     <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.webm" hidden>
+
+    <div class="export-modal" id="exportModal" hidden>
+        <div class="export-modal-backdrop" data-export-close></div>
+        <section class="export-dialog" role="dialog" aria-modal="true" aria-labelledby="exportDialogTitle">
+            <div class="export-dialog-head">
+                <div>
+                    <p class="eyebrow">EXPORT</p>
+                    <h2 id="exportDialogTitle">エクスポート設定</h2>
+                </div>
+                <button class="icon-only-button" id="exportModalClose" type="button" aria-label="閉じる" title="閉じる">
+                    <iconify-icon icon="mdi:close"></iconify-icon>
+                </button>
+            </div>
+
+            <div class="export-setting-grid">
+                <label class="setting-field">
+                    <span>解像度</span>
+                    <select id="resolutionSelect">
+                        <option value="source" selected>元動画</option>
+                        <option value="3840x2160">3840×2160 (4K)</option>
+                        <option value="2560x1440">2560×1440</option>
+                        <option value="1920x1080">1920×1080</option>
+                        <option value="1280x720">1280×720</option>
+                        <option value="854x480">854×480</option>
+                        <option value="custom">カスタム</option>
+                    </select>
+                </label>
+                <label class="setting-field">
+                    <span>FPS</span>
+                    <select id="fpsSelect">
+                        <option value="source" selected>元動画</option>
+                        <option value="24">24</option>
+                        <option value="30">30</option>
+                        <option value="60">60</option>
+                        <option value="120">120</option>
+                    </select>
+                </label>
+                <div class="custom-resolution" id="customResolution" hidden>
+                    <input id="exportWidthInput" type="number" min="16" max="7680" step="2" value="1920" aria-label="出力幅">
+                    <span>×</span>
+                    <input id="exportHeightInput" type="number" min="16" max="4320" step="2" value="1080" aria-label="出力高さ">
+                </div>
+            </div>
+
+            <div class="export-dialog-actions">
+                <button id="cancelButton" type="button" hidden>キャンセル</button>
+                <button id="exportModalCancel" type="button">閉じる</button>
+                <button class="primary-button" id="exportConfirmButton" type="button">
+                    <iconify-icon icon="mdi:export"></iconify-icon>
+                    エクスポート開始
+                </button>
+            </div>
+        </section>
+    </div>
 
     <noscript>
         <p class="noscript-notice">JavaScriptを有効にしてください。</p>
