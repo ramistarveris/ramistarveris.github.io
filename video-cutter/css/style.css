@@ -395,6 +395,7 @@ video {
     transform-origin: center;
     pointer-events: auto;
     touch-action: none;
+    cursor: move;
 }
 
 .scene-image-wrapper.is-selected {
@@ -415,16 +416,17 @@ video {
 
 .scene-image-resize {
     position: absolute;
-    right: -8px;
-    bottom: -8px;
     width: 16px;
     height: 16px;
     border: 2px solid #111;
     border-radius: 3px;
     background: #fff;
-    cursor: nwse-resize;
     pointer-events: auto;
 }
+.scene-image-resize.nw { left: -8px; top: -8px; cursor: nwse-resize; }
+.scene-image-resize.ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.scene-image-resize.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.scene-image-resize.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
 
 .file-row {
     display: flex;
@@ -1149,4 +1151,144 @@ progress::-moz-progress-bar { background: var(--accent); }
     .preview-actions {
         grid-template-columns: 1fr;
     }
+}
+
+
+/* 2026-10 editor usability pass */
+.timeline-snapshot-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.timeline-snapshot-control select {
+    width: 94px;
+    min-height: 30px;
+}
+.timeline-export-button {
+    min-width: 118px;
+    margin-left: 5px;
+}
+.timeline-toolbar {
+    min-height: 42px;
+}
+.timeline-toolbar-right strong {
+    font-size: 13px;
+}
+.timeline-ruler {
+    height: 30px;
+    margin-left: 104px;
+    background: none;
+}
+.ruler-tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px;
+    height: 7px;
+    background: var(--line-strong);
+    transform: translateX(-50%);
+}
+.ruler-tick.major {
+    height: 13px;
+    background: var(--muted-strong);
+}
+.ruler-label {
+    top: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.layer-row {
+    grid-template-columns: 104px minmax(0, 1fr);
+    min-height: 58px;
+}
+.layer-track {
+    min-height: 58px;
+}
+.layer-label {
+    gap: 8px;
+    padding: 0 10px;
+    font-size: 13px;
+    font-weight: 650;
+}
+.layer-label iconify-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+}
+.item-name {
+    font-size: 13px;
+}
+.item-time {
+    font-size: 12px;
+}
+.item-body {
+    padding: 6px 8px;
+}
+.timeline-playhead {
+    left: 104px;
+}
+.timeline-drop-active {
+    outline: 2px dashed var(--accent);
+    outline-offset: -3px;
+}
+.timeline-drop-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    z-index: 45;
+    background: var(--accent-strong);
+    pointer-events: none;
+}
+.export-modal[hidden] {
+    display: none;
+}
+.export-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+}
+.export-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.64);
+    backdrop-filter: blur(3px);
+}
+.export-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(520px, 100%);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 18px 60px rgba(0,0,0,.4);
+    padding: 16px;
+}
+.export-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.icon-only-button {
+    min-width: 36px;
+    width: 36px;
+    padding: 0;
+}
+.export-setting-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.export-setting-grid .custom-resolution {
+    grid-column: 1 / -1;
+}
+.export-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
 }
