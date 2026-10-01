@@ -2417,6 +2417,7 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
             BlobSource,
             Output,
             BufferTarget,
+            StreamTarget,
             VideoSampleSink,
             CanvasSource,
             AudioBufferSink,
@@ -2478,7 +2479,42 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
                 `${preset.extension.toUpperCase()} · ${width}×${height} · ${formatFps(fps)}fps`
             );
 
-            const target = new BufferTarget();
+            const baseName = currentFile.name.replace(/\.[^.]+$/, '') || 'video';
+            const suggestedName = (
+                `${baseName}-edited-${width}x${height}-${formatFps(fps)}fps.${preset.extension}`
+            );
+
+            let target = null;
+            let streamingToDisk = false;
+
+            if (typeof window.showSaveFilePicker === 'function') {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName,
+                        types: [{
+                            description: preset.extension.toUpperCase(),
+                            accept: {
+                                [preset.mimeType]: [`.${preset.extension}`],
+                            },
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    target = new StreamTarget(writable, {
+                        chunked: true,
+                        chunkSize: 4 * 1024 * 1024,
+                    });
+                    streamingToDisk = true;
+                } catch (error) {
+                    if (error?.name === 'AbortError') {
+                        cancelledByUser = true;
+                        return;
+                    }
+                    throw error;
+                }
+            } else {
+                target = new BufferTarget();
+            }
+
             output = new Output({
                 format: preset.format,
                 target,
@@ -2530,111 +2566,109 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
             const keyFrameEvery = Math.max(1, Math.round(fps * 2));
             const yieldInterval = width * height >= 2560 * 1440 ? 1 : 3;
+            const exportChunkSeconds = 5;
+            const chunkCount = Math.max(1, Math.ceil(total / exportChunkSeconds));
+            const spans = getTimelineSpans();
 
             progressLabel.textContent = 'フレームをエクスポート中…';
 
-            for (const span of getTimelineSpans()) {
+            for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
                 if (cancelledByUser) throw new Error('canceled');
 
-                const clip = span.clip;
-                const firstFrame = Math.max(
-                    0,
-                    Math.ceil(span.start * fps - 1e-7),
-                );
-                const endFrame = Math.min(
-                    frameCount,
-                    Math.ceil(span.end * fps - 1e-7),
-                );
+                const chunkStart = chunkIndex * exportChunkSeconds;
+                const chunkEnd = Math.min(total, chunkStart + exportChunkSeconds);
 
-                function* sourceTimestamps() {
-                    for (let frameIndex = firstFrame; frameIndex < endFrame; frameIndex++) {
+                for (const span of spans) {
+                    const overlapStart = Math.max(span.start, chunkStart);
+                    const overlapEnd = Math.min(span.end, chunkEnd);
+                    if (overlapEnd <= overlapStart + EPSILON) continue;
+
+                    const clip = span.clip;
+                    const firstFrame = Math.max(
+                        0,
+                        Math.ceil(overlapStart * fps - 1e-7),
+                    );
+                    const endFrame = Math.min(
+                        frameCount,
+                        Math.ceil(overlapEnd * fps - 1e-7),
+                    );
+
+                    function* sourceTimestamps() {
+                        for (let frameIndex = firstFrame; frameIndex < endFrame; frameIndex++) {
+                            const timelineTime = frameIndex / fps;
+                            const offset = clamp(
+                                timelineTime - span.start,
+                                0,
+                                getClipDuration(clip),
+                            );
+                            yield clip.sourceStart + offset * clip.speed;
+                        }
+                    }
+
+                    let frameIndex = firstFrame;
+
+                    for await (const sample of videoSink.samplesAtTimestamps(sourceTimestamps())) {
+                        if (cancelledByUser) {
+                            sample?.close();
+                            throw new Error('canceled');
+                        }
+
                         const timelineTime = frameIndex / fps;
-                        const offset = clamp(
-                            timelineTime - span.start,
-                            0,
-                            getClipDuration(clip),
+
+                        drawProjectFrame(
+                            context,
+                            sample,
+                            timelineTime,
+                            clip,
+                            width,
+                            height,
                         );
-                        yield clip.sourceStart + offset * clip.speed;
-                    }
-                }
 
-                let frameIndex = firstFrame;
+                        const duration = Math.max(
+                            1 / Math.max(1, fps * 1000),
+                            Math.min(frameDuration, total - timelineTime),
+                        );
 
-                for await (const sample of videoSink.samplesAtTimestamps(sourceTimestamps())) {
-                    if (cancelledByUser) {
+                        await canvasSource.add(
+                            timelineTime,
+                            duration,
+                            { keyFrame: frameIndex % keyFrameEvery === 0 },
+                        );
+
                         sample?.close();
-                        throw new Error('canceled');
+
+                        const progress = clamp((frameIndex + 1) / frameCount, 0, 1);
+                        progressBar.value = progress * .95;
+                        progressPercent.textContent = `${Math.round(progress * 95)}%`;
+
+                        if (frameIndex % yieldInterval === 0) {
+                            await yieldToBrowser();
+                        }
+
+                        frameIndex++;
                     }
-
-                    const timelineTime = frameIndex / fps;
-
-                    drawProjectFrame(
-                        context,
-                        sample,
-                        timelineTime,
-                        clip,
-                        width,
-                        height,
-                    );
-
-                    const duration = Math.max(
-                        1 / Math.max(1, fps * 1000),
-                        Math.min(frameDuration, total - timelineTime),
-                    );
-
-                    await canvasSource.add(
-                        timelineTime,
-                        duration,
-                        { keyFrame: frameIndex % keyFrameEvery === 0 },
-                    );
-
-                    sample?.close();
-
-                    const progress = (frameIndex + 1) / frameCount;
-                    const videoProgress = progress * .85;
-                    progressBar.value = videoProgress;
-                    progressPercent.textContent = `${Math.round(videoProgress * 100)}%`;
-
-                    if (frameIndex % yieldInterval === 0) {
-                        await yieldToBrowser();
-                    }
-
-                    frameIndex++;
                 }
-            }
 
-            canvasSource.close();
-
-            if (audioSource) {
-                const audioChunkSeconds = 5;
-                const chunkCount = Math.ceil(total / audioChunkSeconds);
-                progressLabel.textContent = '音声をエクスポート中…';
-
-                for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
-                    if (cancelledByUser) throw new Error('canceled');
-
-                    const chunkStart = chunkIndex * audioChunkSeconds;
-                    const chunkDuration = Math.min(
-                        audioChunkSeconds,
-                        total - chunkStart,
-                    );
+                if (audioSource) {
+                    progressLabel.textContent = '音声をエクスポート中…';
 
                     const renderedChunk = await renderAudioChunk(
                         chunkStart,
-                        chunkDuration,
+                        chunkEnd - chunkStart,
                         sourceAudioSink,
                     );
-
                     await audioSource.add(renderedChunk);
-
-                    const audioProgress = (chunkIndex + 1) / chunkCount;
-                    progressBar.value = .85 + audioProgress * .13;
-                    progressPercent.textContent = `${Math.round((.85 + audioProgress * .13) * 100)}%`;
-                    await yieldToBrowser();
                 }
 
-                audioSource.close();
+                progressLabel.textContent = 'フレームをエクスポート中…';
+                const chunkProgress = (chunkIndex + 1) / chunkCount;
+                progressBar.value = Math.max(progressBar.value, chunkProgress * .98);
+                progressPercent.textContent = `${Math.round(progressBar.value * 100)}%`;
+                await yieldToBrowser();
             }
+
+            canvasSource.close();
+            audioSource?.close();
 
             await output.finalize();
 
@@ -2642,23 +2676,25 @@ import * as Mediabunny from 'https://cdn.jsdelivr.net/npm/mediabunny@1.59.0/dist
 
             progressBar.value = 1;
             progressPercent.textContent = '100%';
-            progressLabel.textContent = 'ダウンロードを準備中…';
+            progressLabel.textContent = streamingToDisk ? '保存完了' : 'ダウンロードを準備中…';
             await yieldToBrowser();
 
-            const baseName = currentFile.name.replace(/\.[^.]+$/, '') || 'video';
-            const blob = new Blob([target.buffer], { type: preset.mimeType });
-            const downloadUrl = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = downloadUrl;
-            anchor.download = (
-                `${baseName}-edited-${width}x${height}-${formatFps(fps)}fps.${preset.extension}`
-            );
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
+            if (streamingToDisk) {
+                setStatus('エクスポート完了 · ファイルへ直接保存しました。', 'success');
+            } else {
+                const blob = new Blob([target.buffer], { type: preset.mimeType });
+                const downloadUrl = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = downloadUrl;
+                anchor.download = suggestedName;
+                document.body.appendChild(anchor);
+                anchor.click();
+                anchor.remove();
+                setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
 
-            setStatus(`エクスポート完了 · ${formatBytes(blob.size)}`, 'success');
+                setStatus(`エクスポート完了 · ${formatBytes(blob.size)}`, 'success');
+            }
+
             progressLabel.textContent = '完了';
         } catch (error) {
             if (!cancelledByUser) {
