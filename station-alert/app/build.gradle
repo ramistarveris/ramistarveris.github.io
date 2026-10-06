@@ -3,27 +3,8 @@ plugins { id 'com.android.application' }
 android {
     namespace 'jp.ramistarveris.stationalert'
     compileSdk 35
-
-    signingConfigs {
-        release {
-            storeFile file('../release-key.jks')
-            storePassword 'StationAlert2026'
-            keyAlias 'stationalert'
-            keyPassword 'StationAlert2026'
-        }
-    }
-    defaultConfig {
-        applicationId 'jp.ramistarveris.stationalert.auto'
-        minSdk 26
-        targetSdk 35
-        versionCode 2
-        versionName '2.1'
-    }
-    buildTypes {
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
-        }
-    }
+    signingConfigs { release { storeFile file('../release-key.jks'); storePassword 'StationAlert2026'; keyAlias 'stationalert'; keyPassword 'StationAlert2026' } }
+    defaultConfig { applicationId 'jp.ramistarveris.stationalert.auto'; minSdk 26; targetSdk 35; versionCode 3; versionName '2.2' }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.release } }
 }
 dependencies {}
